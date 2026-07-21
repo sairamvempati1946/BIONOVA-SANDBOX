@@ -1,15 +1,18 @@
 package com.bionova.controller;
 
+import com.bionova.dto.TeamMemberDto;
 import com.bionova.entity.Employee;
 import com.bionova.entity.MilestoneLive;
 import com.bionova.entity.ProjectLive;
 import com.bionova.entity.TaskLive;
+import com.bionova.entity.TeamMember;
 import com.bionova.entity.TaskStatusMaster;
 import com.bionova.entity.ScreenMaster;
 import com.bionova.repository.EmployeeRepository;
 import com.bionova.repository.MilestoneLiveRepository;
 import com.bionova.repository.ProjectLiveRepository;
 import com.bionova.repository.TaskLiveRepository;
+import com.bionova.repository.TeamMemberRepository;
 import com.bionova.repository.RoleBasedEmployeeMappingRepository;
 import com.bionova.repository.RoleBasedAccessControlRepository;
 import com.bionova.repository.ScreenMasterRepository;
@@ -20,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -60,6 +64,9 @@ public class TaskLiveController {
 
     @Autowired
     private ProcessConfigRepository processConfigRepository;
+
+    @Autowired
+    private TeamMemberRepository teamMemberRepository;
 
     /**
      * Determines if the employee has access to the Project module.
@@ -273,6 +280,7 @@ public class TaskLiveController {
         return ResponseEntity.ok(response);
     }
 
+    @Transactional
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody TaskLive details) {
         TaskLive task = taskLiveRepository.findById(id)
@@ -359,17 +367,27 @@ public class TaskLiveController {
         return ResponseEntity.ok(response);
     }
 
+    @Transactional
     @PatchMapping("/{id}/status")
     public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
         TaskLive task = taskLiveRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Task not found: " + id));
 
         String newStatus = body.get("taskSts");
-        if (!List.of("DRAFT","OPEN","WIP","UNDER_REVIEW","COMPLETED","REASSIGN","REWORK","OVER_DUE").contains(newStatus)) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("message", "Invalid status. Allowed: DRAFT, OPEN, WIP, UNDER_REVIEW, COMPLETED, REASSIGN, REWORK, OVER_DUE"));
+        if (newStatus == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "taskSts is required"));
         }
-        task.setTaskSts(TaskStatusMaster.getByName(newStatus));
+        String upperStatus = newStatus.toUpperCase().replace(" ", "_");
+        if (!List.of("DRAFT","OPEN","WIP","UNDER_REVIEW","SUBMIT_REVIEW","COMPLETED","REASSIGN","REWORK","OVER_DUE","HOLD").contains(upperStatus)) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", "Invalid status. Allowed: DRAFT, OPEN, WIP, UNDER_REVIEW, SUBMIT_REVIEW, COMPLETED, REASSIGN, REWORK, OVER_DUE, HOLD"));
+        }
+        // SUBMIT_REVIEW is a frontend-only state → maps to WIP
+        if ("SUBMIT_REVIEW".equals(upperStatus)) {
+            task.setTaskSts(TaskStatusMaster.WIP);
+        } else {
+            task.setTaskSts(TaskStatusMaster.getByName(newStatus));
+        }
         TaskLive saved = taskLiveRepository.save(task);
         projectStatusCascadeService.cascadeStatusFromTask(id);
         return ResponseEntity.ok(saved);
@@ -379,5 +397,54 @@ public class TaskLiveController {
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         taskLiveRepository.deleteById(id);
         return ResponseEntity.ok().build();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Contributor Endpoints
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @GetMapping("/{id}/contributors")
+    public ResponseEntity<?> getContributors(@PathVariable Long id) {
+        if (!taskLiveRepository.existsById(id)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Task not found: " + id));
+        }
+        return ResponseEntity.ok(teamMemberRepository.findByTaskId(id));
+    }
+
+    @PostMapping("/{id}/contributors")
+    public ResponseEntity<?> assignContributors(@PathVariable Long id, @RequestBody List<TeamMemberDto> dtos) {
+        if (!taskLiveRepository.existsById(id)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Task not found: " + id));
+        }
+        if (dtos == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Request body cannot be null."));
+        }
+
+        teamMemberRepository.deleteByTaskId(id);
+
+        List<TeamMember> saved = dtos.stream()
+                .filter(dto -> dto.getEmpId() != null)
+                .map(dto -> {
+                    TeamMember tm = new TeamMember();
+                    tm.setTaskId(id);
+                    tm.setEmpId(dto.getEmpId());
+                    tm.setAsgnRmk(dto.getAsgnRmk());
+                    return teamMemberRepository.save(tm);
+                })
+                .toList();
+
+        return ResponseEntity.ok(saved);
+    }
+
+    @DeleteMapping("/{id}/contributors/{tmId}")
+    public ResponseEntity<?> removeContributor(@PathVariable Long id, @PathVariable Integer tmId) {
+        if (!teamMemberRepository.existsById(tmId)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Contributor not found: " + tmId));
+        }
+        teamMemberRepository.deleteById(tmId);
+        return ResponseEntity.ok(Map.of("message", "Contributor removed successfully."));
     }
 }

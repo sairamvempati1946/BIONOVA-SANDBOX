@@ -106,16 +106,11 @@ export default function ProjectList({ userRole, onLogout }) {
 
   useEffect(() => { fetchProjects(); }, []);
 
-  // Filter logic – search includes company, plant, department
+  // Filter logic
   const filteredProjects = projects.filter(p => {
-    const searchLower = searchText.toLowerCase().trim();
-    const matchSearch = !searchLower ||
-      p.projectCode?.toLowerCase().includes(searchLower) ||
-      p.projectName?.toLowerCase().includes(searchLower) ||
-      p.companyName?.toLowerCase().includes(searchLower) ||
-      p.plantName?.toLowerCase().includes(searchLower) ||
-      p.department?.toLowerCase().includes(searchLower);
-
+    const matchSearch = !searchText ||
+      p.projectCode?.toLowerCase().includes(searchText.toLowerCase()) ||
+      p.projectName?.toLowerCase().includes(searchText.toLowerCase());
     const matchCompany = !filterCompany || p.companyName === filterCompany;
     const matchPlant = !filterPlant || p.plantName === filterPlant;
     const matchDept = !filterDept || p.department === filterDept;
@@ -126,11 +121,12 @@ export default function ProjectList({ userRole, onLogout }) {
     return matchSearch && matchCompany && matchPlant && matchDept && matchStatus && matchPriority && matchStartFrom && matchStartTo;
   });
 
-  // Stats – removed cancelled
+  // Stats
   const totalProjects = projects.length;
   const liveProjects = projects.filter(p => p.status === 'LIVE').length;
-  const onHoldProjects = projects.filter(p => p.status === 'HOLD').length;
-  const closedProjects = projects.filter(p => p.status === 'CLOSED').length;
+  const onHoldProjects = projects.filter(p => p.status === 'ON HOLD').length;
+  const completedProjects = projects.filter(p => p.status === 'COMPLETED').length;
+  const cancelledProjects = projects.filter(p => p.status === 'CANCELLED').length;
 
   // Unique options for dropdowns
   const uniqueCompanies = [...new Set(projects.map(p => p.companyName).filter(Boolean))];
@@ -155,8 +151,9 @@ export default function ProjectList({ userRole, onLogout }) {
     switch(status) {
       case 'LIVE': return 'live';
       case 'DRAFT': return 'draft';
-      case 'HOLD': return 'on-hold';
-      case 'CLOSED': return 'closed';
+      case 'ON HOLD': return 'on-hold';
+      case 'COMPLETED': return 'completed';
+      case 'CANCELLED': return 'cancelled';
       default: return '';
     }
   };
@@ -174,10 +171,10 @@ export default function ProjectList({ userRole, onLogout }) {
   };
 
   const handleExport = () => {
-    const headers = ['#','Project Code','Project Name','Company','Plant','Department','Priority','Status','Start Date','End Date','Total Days'];
+    const headers = ['#','Project Code','Project Name','Company','Plant','Department','Priority','Status','Start Date','End Date','Total Days','Created By'];
     const rows = filteredProjects.map((p, i) => [
       i+1, p.projectCode, p.projectName, p.companyName, p.plantName,
-      p.department, p.priority, p.status, p.startDate, p.endDate, p.totalProjectDays
+      p.department, p.priority, p.status, p.startDate, p.endDate, p.totalProjectDays, p.createdBy
     ]);
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
     const link = document.createElement('a');
@@ -211,47 +208,51 @@ export default function ProjectList({ userRole, onLogout }) {
             </div>
           )}
 
-          {/* Stats Cards – Cancelled removed, now 4 columns */}
-          <div className="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-3 mb-4">
-            <div className="col">
-              <div className="pl-stat-card h-100 m-0 w-100">
-                <div className="pl-stat-icon blue"><FileText size={24} /></div>
-                <div className="pl-stat-info">
-                  <span className="pl-stat-label">Total Projects</span>
-                  <span className="pl-stat-value">{totalProjects}</span>
-                </div>
+          {/* Stats Cards */}
+          <div className="pl-stats-grid">
+            <div className="pl-stat-card">
+              <div className="pl-stat-icon blue"><FileText size={24} /></div>
+              <div className="pl-stat-info">
+                <span className="pl-stat-label">Total Projects</span>
+                <span className="pl-stat-value">{totalProjects}</span>
+                <span className="pl-stat-desc">All Projects</span>
               </div>
             </div>
-            <div className="col">
-              <div className="pl-stat-card h-100 m-0 w-100">
-                <div className="pl-stat-icon green"><PlayCircle size={24} /></div>
-                <div className="pl-stat-info">
-                  <span className="pl-stat-label">Live Projects</span>
-                  <span className="pl-stat-value">{liveProjects}</span>
-                </div>
+            <div className="pl-stat-card">
+              <div className="pl-stat-icon green"><PlayCircle size={24} /></div>
+              <div className="pl-stat-info">
+                <span className="pl-stat-label">Live Projects</span>
+                <span className="pl-stat-value">{liveProjects}</span>
+                <span className="pl-stat-desc">Active Projects</span>
               </div>
             </div>
-            <div className="col">
-              <div className="pl-stat-card h-100 m-0 w-100">
-                <div className="pl-stat-icon orange"><PauseCircle size={24} /></div>
-                <div className="pl-stat-info">
-                  <span className="pl-stat-label">On Hold</span>
-                  <span className="pl-stat-value">{onHoldProjects}</span>
-                </div>
+            <div className="pl-stat-card">
+              <div className="pl-stat-icon orange"><PauseCircle size={24} /></div>
+              <div className="pl-stat-info">
+                <span className="pl-stat-label">On Hold</span>
+                <span className="pl-stat-value">{onHoldProjects}</span>
+                <span className="pl-stat-desc">Paused Projects</span>
               </div>
             </div>
-            <div className="col">
-              <div className="pl-stat-card h-100 m-0 w-100">
-                <div className="pl-stat-icon purple"><CheckCircle size={24} /></div>
-                <div className="pl-stat-info">
-                  <span className="pl-stat-label">Closed</span>
-                  <span className="pl-stat-value">{closedProjects}</span>
-                </div>
+            <div className="pl-stat-card">
+              <div className="pl-stat-icon purple"><CheckCircle size={24} /></div>
+              <div className="pl-stat-info">
+                <span className="pl-stat-label">Completed</span>
+                <span className="pl-stat-value">{completedProjects}</span>
+                <span className="pl-stat-desc">Successfully Completed</span>
+              </div>
+            </div>
+            <div className="pl-stat-card">
+              <div className="pl-stat-icon red"><XCircle size={24} /></div>
+              <div className="pl-stat-info">
+                <span className="pl-stat-label">Cancelled</span>
+                <span className="pl-stat-value">{cancelledProjects}</span>
+                <span className="pl-stat-desc">Cancelled Projects</span>
               </div>
             </div>
           </div>
 
-          {/* Table – removed Edit and Delete, kept only View */}
+          {/* Table */}
           <div className="pl-table-card">
             <div className="pl-table-header">
               <div className="pl-entries-select">
@@ -314,6 +315,7 @@ export default function ProjectList({ userRole, onLogout }) {
                       <th>Start Date</th>
                       <th>End Date</th>
                       <th>Total Days</th>
+                      <th>Created By</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -331,22 +333,18 @@ export default function ProjectList({ userRole, onLogout }) {
                         <td>{p.startDate || 'N/A'}</td>
                         <td>{p.endDate || 'N/A'}</td>
                         <td>{p.totalProjectDays || 'N/A'}</td>
+                        <td>{p.createdBy}</td>
                         <td>
                           <div className="pl-actions">
-                            <button 
-                              className="pl-action-btn view" 
-                              title="View Project Details" 
-                              onClick={() => navigate(`/project-details/${p.id}`, { state: { viewMode: 'full', projectType: p._type } })}
-                            >
-                              <Eye size={14} />
-                            </button>
-                            {/* Edit and Delete buttons removed */}
+                            <button className="pl-action-btn view" title="View Project Details" onClick={() => navigate(`/project-details/${p.id}`, { state: { viewMode: 'full', projectType: p._type } })}><Eye size={14} /></button>
+                            <button className="pl-action-btn edit" title="Edit Project" onClick={() => navigate('/project-creation')}><Edit2 size={14} /></button>
+                            <button className="pl-action-btn delete" title="Delete Project"><Trash2 size={14} /></button>
                           </div>
                         </td>
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={12} style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
+                        <td colSpan={13} style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
                           No projects found. {projects.length === 0 ? 'No projects in the system yet.' : 'Try adjusting your filters.'}
                         </td>
                       </tr>
@@ -389,5 +387,13 @@ export default function ProjectList({ userRole, onLogout }) {
         </main>
       </div>
     </div>
+  );
+}
+
+function FilterIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+    </svg>
   );
 }

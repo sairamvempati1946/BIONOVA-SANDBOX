@@ -1,12 +1,6 @@
 import React, { useState } from 'react';
 import '../styles/login.css';
 
-// Import background image
-import loginBg from '/login bg.png';
-// Import your custom icons (replace with your actual icon paths)
-import loginIcon from '/BioNova.png'; // Your login icon
-import resetIcon from '/BioNova.png'; // Your reset icon
-
 const Login = ({ onLogin }) => {
   const [currentView, setCurrentView] = useState('login');
   
@@ -79,7 +73,6 @@ const Login = ({ onLogin }) => {
           .map(word => word.charAt(0).toUpperCase() + word.slice(1))
           .join(" ");
         sessionStorage.setItem("userName", formattedName);
-        localStorage.setItem("userName", formattedName);
         
         onLogin(true, data.role || "full_access");
       } else {
@@ -141,159 +134,111 @@ const Login = ({ onLogin }) => {
     setResetEmail('');
   };
 
-  // Background image style
-  const backgroundStyle = {
-    backgroundImage: `url(${loginBg})`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    backgroundRepeat: 'no-repeat'
-  };
-
   return (
-    <div className="login-container" style={backgroundStyle}>
-      <div className="login-overlay">
-        <div className="login-card-wrapper">
-          <div className="login-card">
+    <div className="login-container">
+      <div className="login-fullscreen-split">
+        
+        <div className="login-left">
+          <img src="/icon3.png" alt="Login Background" className="left-side-image" />
+        </div>
+
+        <div className="login-right">
+          <div className="login-body">
             
+            <div className="brand-header-large">
+              <img src="/login_logo.svg" alt="BIONOVA Logo" className="bionova-main-logo" style={{ width: '100%', maxWidth: '320px', height: 'auto' }} />
+            </div>
+
+            {error && (
+              <div className="error-message">
+                <i className="fas fa-exclamation-circle"></i> <span>{error}</span>
+              </div>
+            )}
+            
+            {successMsg && (
+              <div className="success-message">
+                <i className="fas fa-check-circle"></i> <span>{successMsg}</span>
+              </div>
+            )}
+
             {currentView === 'login' ? (
-              // Login View - Shows Welcome Header
-              <>
-                <div className="login-header">
-                  <div className="logo-icon">
-                    <img src={loginIcon} alt="Login Icon" className="header-icon" />
+              <form onSubmit={handleLoginSubmit}>
+                <div className="input-group">
+                  <label>Email</label>
+                  <div className="input-wrapper">
+                    <i className="far fa-envelope input-icon"></i>
+                    <input
+                      type="email" name="email" value={formData.email} onChange={handleChange}
+                      placeholder="Enter your email" autoComplete="off"
+                    />
                   </div>
-                  <h1 className="login-title">Welcome to BIONOVA</h1>
-                  <p className="login-subtitle">Sign in to continue to your account</p>
                 </div>
 
-                {error && (
-                  <div className="error-message">
-                    <i className="fas fa-exclamation-circle"></i> <span>{error}</span>
+                <div className="input-group">
+                  <label>Password</label>
+                  <div className="input-wrapper password-wrapper">
+                    <i className="fas fa-lock input-icon"></i>
+                    <input
+                      type={showPassword ? 'text' : 'password'} 
+                      name="password"
+                      value={formData.password} 
+                      onChange={handleChange} 
+                      placeholder="Enter your password"
+                      className="password-input"
+                    />
+                    <button 
+                      type="button"
+                      className="password-toggle-btn" 
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      <i className={showPassword ? 'far fa-eye-slash' : 'far fa-eye'}></i>
+                    </button>
                   </div>
-                )}
-                
-                {successMsg && (
-                  <div className="success-message">
-                    <i className="fas fa-check-circle"></i> <span>{successMsg}</span>
-                  </div>
-                )}
+                </div>
 
-                <form onSubmit={handleLoginSubmit}>
-                  <div className="input-group">
-                    <label>Email</label>
-                    <div className="input-wrapper">
-                      <i className="far fa-envelope input-icon"></i>
-                      <input
-                        type="email" 
-                        name="email" 
-                        value={formData.email} 
-                        onChange={handleChange}
-                        placeholder="your_email@email.com" 
-                        autoComplete="off"
-                      />
-                    </div>
-                  </div>
+                <div className="forgot-link-wrapper">
+                  <span className="forgot-link" onClick={() => switchView('forgot')}>
+                    Forgot Password?
+                  </span>
+                </div>
 
-                  <div className="input-group">
-                    <label>Password</label>
-                    <div className="input-wrapper password-wrapper">
-                      <i className="fas fa-lock input-icon"></i>
-                      <input
-                        type={showPassword ? 'text' : 'password'} 
-                        name="password"
-                        value={formData.password} 
-                        onChange={handleChange} 
-                        placeholder="your_password"
-                        className="password-input"
-                      />
-                      <button 
-                        type="button"
-                        className="password-toggle-btn" 
-                        onClick={() => setShowPassword(!showPassword)}
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      >
-                        <i className={showPassword ? 'far fa-eye-slash' : 'far fa-eye'}></i>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="forgot-link-wrapper">
-                    <span className="forgot-link" onClick={() => switchView('forgot')}>
-                      Forgot Password?
-                    </span>
-                  </div>
-
-                  <button type="submit" className="login-btn" disabled={loading}>
-                    {loading ? (
-                      <>
-                        <span className="spinner"></span>
-                        Logging in...
-                      </>
-                    ) : (
-                      "Sign In"
-                    )}
-                  </button>
-                </form>
-              </>
+                <button type="submit" className="login-btn" disabled={loading}>
+                  {loading ? <><i className="fas fa-spinner fa-spin" style={{marginRight: '8px'}}></i> Logging in...</> : "Sign In"}
+                </button>
+              </form>
             ) : (
-              // Reset Password View - Only Reset Header
-              <>
-                <div className="reset-header">
-                  <div className="reset-icon-wrapper">
-                    <img src={resetIcon} alt="Reset Icon" className="header-icon" />
-                  </div>
-                  <h2 className="reset-title">Reset Password</h2>
-                  <p className="reset-subtitle">Enter your email to receive instructions</p>
+              <form onSubmit={handleForgotSubmit}>
+                <div className="welcome-text" style={{ marginBottom: '20px', textAlign: 'center' }}>
+                  <h2 style={{ color: '#1e293b', fontSize: '22px', fontWeight: '600', marginBottom: '8px' }}>Reset Password</h2>
+                  <p style={{ color: '#64748b', fontSize: '14px' }}>Enter your email to receive instructions</p>
                 </div>
 
-                {error && (
-                  <div className="error-message">
-                    <i className="fas fa-exclamation-circle"></i> <span>{error}</span>
+                <div className="input-group">
+                  <label>Email Address</label>
+                  <div className="input-wrapper">
+                    <i className="far fa-envelope input-icon"></i>
+                    <input
+                      type="email" value={resetEmail}
+                      onChange={(e) => { setResetEmail(e.target.value); setError(''); }}
+                      placeholder="Enter your registered email" autoComplete="off"
+                    />
                   </div>
-                )}
-                
-                {successMsg && (
-                  <div className="success-message">
-                    <i className="fas fa-check-circle"></i> <span>{successMsg}</span>
-                  </div>
-                )}
+                </div>
 
-                <form onSubmit={handleForgotSubmit}>
-                  <div className="input-group">
-                    <label>Email Address</label>
-                    <div className="input-wrapper">
-                      <i className="far fa-envelope input-icon"></i>
-                      <input
-                        type="email" 
-                        value={resetEmail}
-                        onChange={(e) => { setResetEmail(e.target.value); setError(''); }}
-                        placeholder="Enter your registered email" 
-                        autoComplete="off"
-                      />
-                    </div>
-                  </div>
+                <button type="submit" className="login-btn" disabled={loading}>
+                  {loading ? <><i className="fas fa-spinner fa-spin" style={{marginRight: '8px'}}></i> Sending...</> : "Send Reset Link"}
+                </button>
 
-                  <button type="submit" className="login-btn" disabled={loading}>
-                    {loading ? (
-                      <>
-                        <span className="spinner"></span>
-                        Sending...
-                      </>
-                    ) : (
-                      "Send Reset Link"
-                    )}
-                  </button>
-
-                  <div className="back-link" onClick={() => switchView('login')}>
-                    <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> 
-                    Back to Login
-                  </div>
-                </form>
-              </>
+                <div className="back-link" onClick={() => switchView('login')}>
+                  <i className="fas fa-arrow-left" style={{marginRight: '5px'}}></i> Back to Login
+                </div>
+              </form>
             )}
 
           </div>
         </div>
+
       </div>
     </div>
   );

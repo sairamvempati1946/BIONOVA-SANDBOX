@@ -67,23 +67,23 @@ public class EmployeeController {
             plantRepository.findById(employee.getPltId().longValue())
                 .ifPresent(p -> employee.setPltNm(p.getPltNm()));
         }
-    }
-
-    private void populateDepartmentAndManager(Employee employee) {
-        if (employee == null) return;
         if (employee.getDeptId() != null) {
             departmentRepository.findById(employee.getDeptId().longValue())
                 .ifPresent(d -> employee.setDeptNm(d.getDeptNm()));
         }
         if (employee.getRepManId() != null) {
             employeeRepository.findById(employee.getRepManId().longValue())
-                .ifPresent(m -> employee.setRepManNm(m.getFirstName() + " " + m.getLastName()));
+                .ifPresent(mgr -> {
+                    String name = ((mgr.getFirstName() != null ? mgr.getFirstName() : "") + " " +
+                                  (mgr.getLastName() != null ? mgr.getLastName() : "")).trim();
+                    employee.setRepManNm(name.isEmpty() ? null : name);
+                });
         }
     }
 
     private void populateCompanyAndPlantNames(List<Employee> employees) {
         if (employees == null || employees.isEmpty()) return;
-        
+
         List<com.bionova.entity.CompanyMaster> companies = companyRepository.findAll();
         Map<Long, String> coyMap = companies.stream()
             .collect(java.util.stream.Collectors.toMap(
@@ -100,19 +100,6 @@ public class EmployeeController {
                 (v1, v2) -> v1
             ));
 
-        for (Employee emp : employees) {
-            if (emp.getCoyId() != null) {
-                emp.setCoyNm(coyMap.get(emp.getCoyId().longValue()));
-            }
-            if (emp.getPltId() != null) {
-                emp.setPltNm(pltMap.get(emp.getPltId().longValue()));
-            }
-        }
-    }
-
-    private void populateDepartmentAndManagerNames(List<Employee> employees) {
-        if (employees == null || employees.isEmpty()) return;
-
         List<com.bionova.entity.DepartmentMaster> departments = departmentRepository.findAll();
         Map<Long, String> deptMap = departments.stream()
             .collect(java.util.stream.Collectors.toMap(
@@ -121,20 +108,30 @@ public class EmployeeController {
                 (v1, v2) -> v1
             ));
 
-        List<Employee> allEmps = employeeRepository.findAll();
-        Map<Long, String> empNameMap = allEmps.stream()
+        // Build a name map for reporting managers from the same employees list
+        Map<Long, String> empNameMap = employees.stream()
             .collect(java.util.stream.Collectors.toMap(
                 Employee::getEmpId,
-                e -> e.getFirstName() + " " + e.getLastName(),
+                e -> ((e.getFirstName() != null ? e.getFirstName() : "") + " " +
+                      (e.getLastName() != null ? e.getLastName() : "")).trim(),
                 (v1, v2) -> v1
             ));
 
         for (Employee emp : employees) {
+            if (emp.getCoyId() != null) {
+                emp.setCoyNm(coyMap.get(emp.getCoyId().longValue()));
+            }
+            if (emp.getPltId() != null) {
+                emp.setPltNm(pltMap.get(emp.getPltId().longValue()));
+            }
             if (emp.getDeptId() != null) {
                 emp.setDeptNm(deptMap.get(emp.getDeptId().longValue()));
             }
             if (emp.getRepManId() != null) {
-                emp.setRepManNm(empNameMap.get(emp.getRepManId().longValue()));
+                String mgrName = empNameMap.get(emp.getRepManId().longValue());
+                if (mgrName != null && !mgrName.isBlank()) {
+                    emp.setRepManNm(mgrName);
+                }
             }
         }
     }
@@ -144,7 +141,6 @@ public class EmployeeController {
         List<Employee> list = employeeRepository.findAll();
         populateDesignations(list);
         populateCompanyAndPlantNames(list);
-        populateDepartmentAndManagerNames(list);
         return list;
     }
 
@@ -154,7 +150,6 @@ public class EmployeeController {
                 .map(emp -> {
                     populateDesignation(emp);
                     populateCompanyAndPlant(emp);
-                    populateDepartmentAndManager(emp);
                     return ResponseEntity.ok(emp);
                 })
                 .orElse(ResponseEntity.notFound().build());
@@ -171,7 +166,6 @@ public class EmployeeController {
                 .map(emp -> {
                     populateDesignation(emp);
                     populateCompanyAndPlant(emp);
-                    populateDepartmentAndManager(emp);
                     return ResponseEntity.ok(emp);
                 })
                 .orElse(ResponseEntity.notFound().build());
@@ -262,7 +256,6 @@ public class EmployeeController {
         Employee saved = employeeRepository.save(employee);
         populateDesignation(saved);
         populateCompanyAndPlant(saved);
-        populateDepartmentAndManager(saved);
         return ResponseEntity.ok(saved);
     }
     @PutMapping("/employees/{id}")
@@ -327,7 +320,6 @@ public class EmployeeController {
         Employee updated = employeeRepository.save(employee);
         populateDesignation(updated);
         populateCompanyAndPlant(updated);
-        populateDepartmentAndManager(updated);
         return ResponseEntity.ok(updated);
     }
 

@@ -24,7 +24,56 @@ const getAuthHeaders = () => {
 };
 
 // Screen definitions with their permission keys
-const SCREEN_GROUPS = [];
+const SCREEN_GROUPS = [
+  {
+    id: 'company-master',
+    name: 'Company Master',
+    icon: Building2,
+    screens: [
+      { id: 'admin-dashboard', name: 'Admin Dashboard' },
+      { id: 'company-creation', name: 'Company Creation' },
+      { id: 'plant-creation', name: 'Plant Creation' },
+      { id: 'land-creation', name: 'Land Creation' },
+      { id: 'employee-creation', name: 'Employee Creation' },
+      { id: 'department-creation', name: 'Department Creation' },
+      { id: 'department-mapping', name: 'Department Mapping' }
+    ]
+  },
+  {
+    id: 'project',
+    name: 'Project Management',
+    icon: Folder,
+    screens: [
+      { id: 'project-creation', name: 'Project Creation' },
+      { id: 'milestone-creation', name: 'Milestone Creation' },
+      { id: 'project-dashboard', name: 'Project Dashboard' },
+      { id: 'project-list', name: 'Project List' },
+      { id: 'individual-task', name: 'Individual Task' },
+      { id: 'task-board', name: 'Task Board' }
+    ]
+  },
+  {
+    id: 'user',
+    name: 'User Modules',
+    icon: Users,
+    screens: [
+      { id: 'user-dashboard', name: 'User Dashboard' },
+      { id: 'my-tasks', name: 'My Tasks' },
+      { id: 'my-project', name: 'My Project' },
+      { id: 'calendar', name: 'Calendar' }
+    ]
+  },
+  {
+    id: 'settings',
+    name: 'System Settings',
+    icon: Settings,
+    screens: [
+      { id: 'public-holidays', name: 'Public Holidays' },
+      { id: 'assign-access', name: 'Assign Access' },
+      { id: 'profile', name: 'Profile' }
+    ]
+  }
+];
 
 const PERMISSION_TYPES = ['view', 'create', 'edit', 'delete'];
 
@@ -45,7 +94,6 @@ const AssignAccess = ({ userRole, onLogout }) => {
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [accessGroups, setAccessGroups] = useState([]);
-  const [dbScreenGroups, setDbScreenGroups] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchTermStep2, setSearchTermStep2] = useState('');
   const [searchTermStep3, setSearchTermStep3] = useState('');
@@ -98,24 +146,11 @@ const AssignAccess = ({ userRole, onLogout }) => {
     setAlertConfig({ isOpen: true, type, title, message });
   };
 
-  const getLoggedInUserName = () => {
-    return sessionStorage.getItem("userName") || localStorage.getItem("userName") || "Admin User";
-  };
-
-  // ── Fetch Data ──
   // ── Fetch Data ──
   useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await fetchEmployees();
-      const groupsList = await fetchDbScreensAndGroups();
-      await fetchTemplates();
-      if (groupsList && groupsList.length > 0) {
-        initializeAccessGroups(groupsList);
-      }
-      setLoading(false);
-    };
-    init();
+    fetchEmployees();
+    fetchTemplates();
+    initializeAccessGroups();
   }, []);
 
   const fetchEmployees = async () => {
@@ -141,75 +176,97 @@ const AssignAccess = ({ userRole, onLogout }) => {
     }
   };
 
-  const fetchDbScreensAndGroups = async () => {
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/rbac/screens`, {
-        headers: getAuthHeaders()
-      });
-      if (response.ok) {
-        const screens = await response.json();
-        
-        const groupIcons = {
-          'Company Master': Building2,
-          'Project': Folder,
-          'User': Users,
-          'Access Control': Settings,
-          'Individual Screens': User
-        };
-
-        const groupsMap = {};
-        screens.forEach(screen => {
-          const groupName = screen.groupNm;
-          if (!groupsMap[groupName]) {
-            groupsMap[groupName] = {
-              id: groupName,
-              name: groupName,
-              icon: groupIcons[groupName] || Shield,
-              screens: []
-            };
-          }
-          groupsMap[groupName].screens.push({
-            id: screen.screenId,
-            name: screen.screenNm,
-            code: screen.screenCode
-          });
-        });
-        
-        const groupsList = Object.values(groupsMap);
-        setDbScreenGroups(groupsList);
-        return groupsList;
-      }
-    } catch (err) {
-      console.error('Error fetching screens:', err);
-    }
-    return [];
-  };
-
   const fetchTemplates = async () => {
     try {
-      const response = await fetch(`${apiBaseUrl}/api/rbac/roles`, {
+      const response = await fetch(`${apiBaseUrl}/api/access-templates`, {
         headers: getAuthHeaders()
       });
       if (response.ok) {
         const data = await response.json();
-        const mapped = data.map(r => ({
-          id: r.roleId,
-          code: `ROLE-${String(r.roleId).padStart(3, '0')}`,
-          name: r.roleNm,
-          description: `Database Template: ${r.roleNm}`,
-          isDraft: false,
-          permissionsCount: r.permissionsCount || 0
-        }));
-        setTemplates(mapped);
+        setTemplates(data);
+      } else {
+        setTemplates([
+          {
+            id: 'template-admin',
+            code: 'ADMIN-001',
+            name: 'System Administrator Template',
+            description: 'Full access to all modules and features.',
+            permissions: getFullAccessPermissions(),
+            isDraft: false
+          },
+          {
+            id: 'template-pm',
+            code: 'PMGR-001',
+            name: 'Project Manager Template',
+            description: 'Complete project management access including creation and tracking.',
+            permissions: getProjectManagerPermissions(),
+            isDraft: false
+          },
+          {
+            id: 'template-user',
+            code: 'USER-001',
+            name: 'Standard User Template',
+            description: 'Basic access for task management and personal dashboard.',
+            permissions: getUserPermissions(),
+            isDraft: false
+          }
+        ]);
       }
     } catch (err) {
       console.error('Error fetching templates:', err);
     }
   };
 
+  // ── Permission Templates ──
+  const getFullAccessPermissions = () => {
+    const perms = {};
+    SCREEN_GROUPS.forEach(group => {
+      group.screens.forEach(screen => {
+        perms[screen.id] = { view: true, create: true, edit: true, delete: true };
+      });
+    });
+    return perms;
+  };
+
+  const getProjectManagerPermissions = () => {
+    const perms = {};
+    SCREEN_GROUPS.forEach(group => {
+      group.screens.forEach(screen => {
+        if (group.id === 'user') {
+          perms[screen.id] = { view: true, create: false, edit: false, delete: false };
+        } else if (group.id === 'settings' && screen.id === 'profile') {
+          perms[screen.id] = { view: true, create: false, edit: true, delete: false };
+        } else if (group.id === 'company-master' && screen.id === 'employee-creation') {
+          perms[screen.id] = { view: true, create: false, edit: false, delete: false };
+        } else if (['project', 'settings'].includes(group.id) && screen.id !== 'assign-access') {
+          perms[screen.id] = { view: true, create: true, edit: true, delete: false };
+        } else {
+          perms[screen.id] = { view: false, create: false, edit: false, delete: false };
+        }
+      });
+    });
+    return perms;
+  };
+
+  const getUserPermissions = () => {
+    const perms = {};
+    SCREEN_GROUPS.forEach(group => {
+      group.screens.forEach(screen => {
+        if (group.id === 'user') {
+          perms[screen.id] = { view: true, create: false, edit: true, delete: false };
+        } else if (group.id === 'settings' && screen.id === 'profile') {
+          perms[screen.id] = { view: true, create: false, edit: true, delete: false };
+        } else {
+          perms[screen.id] = { view: false, create: false, edit: false, delete: false };
+        }
+      });
+    });
+    return perms;
+  };
+
   // ── Initialize Access Groups ──
-  const initializeAccessGroups = (groupsList = dbScreenGroups) => {
-    const groups = groupsList.map(group => {
+  const initializeAccessGroups = () => {
+    const groups = SCREEN_GROUPS.map(group => {
       const screens = group.screens.map(screen => ({
         ...screen,
         view: PERMISSION_STATES.EMPTY,
@@ -235,9 +292,9 @@ const AssignAccess = ({ userRole, onLogout }) => {
     setExpandedGroups({ [groups[0]?.id]: true });
   };
 
-  // ── Initialize Empty Create Template Groups ──
-  const initializeCreateTemplateGroups = (groupsList = dbScreenGroups) => {
-    const groups = groupsList.map(group => {
+  // ── NEW: Initialize Empty Create Template Groups ──
+  const initializeCreateTemplateGroups = () => {
+    const groups = SCREEN_GROUPS.map(group => {
       const screens = group.screens.map(screen => ({
         ...screen,
         view: PERMISSION_STATES.EMPTY,
@@ -284,123 +341,11 @@ const AssignAccess = ({ userRole, onLogout }) => {
   ];
 
   // ── Navigation ──
-  const handleNext = async () => {
+  const handleNext = () => {
     if (currentStep < 4) {
-      if (currentStep === 1) {
-        if (selectedEmployees.length === 0) {
-          triggerAlert('warning', 'Selection Required', 'Please select at least one employee.');
-          return;
-        }
-        
-        if (selectedEmployees.length === 1) {
-          setLoading(true);
-          try {
-            const empId = selectedEmployees[0];
-            const hasRbacRes = await fetch(`${apiBaseUrl}/api/rbac/employees/${empId}/has-rbac`, {
-              headers: getAuthHeaders()
-            });
-            let hasRbac = false;
-            if (hasRbacRes.ok) {
-              const rbacData = await hasRbacRes.json();
-              hasRbac = rbacData.hasRbac;
-            }
-
-            if (hasRbac) {
-              const response = await fetch(`${apiBaseUrl}/api/rbac/employees/${empId}/permissions`, {
-                headers: getAuthHeaders()
-              });
-              if (response.ok) {
-                const permsList = await response.json();
-                
-                const updatedGroups = accessGroups.map(group => {
-                  let groupHasView = false;
-                  let groupHasCreate = false;
-                  let groupHasEdit = false;
-                  let groupHasDelete = false;
-
-                  const updatedScreens = group.screens.map(screen => {
-                    const perms = permsList.find(p => p.screenId === screen.id);
-                    if (perms) {
-                      const view = perms.viewFlg ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
-                      const create = perms.addFlg ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
-                      const edit = perms.editFlg ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
-                      const delete_ = perms.deleteFlg ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
-                      
-                      if (view === PERMISSION_STATES.BLUE) groupHasView = true;
-                      if (create === PERMISSION_STATES.BLUE) groupHasCreate = true;
-                      if (edit === PERMISSION_STATES.BLUE) groupHasEdit = true;
-                      if (delete_ === PERMISSION_STATES.BLUE) groupHasDelete = true;
-
-                      const hasBlue = view === PERMISSION_STATES.BLUE || create === PERMISSION_STATES.BLUE || 
-                                      edit === PERMISSION_STATES.BLUE || delete_ === PERMISSION_STATES.BLUE;
-                      const hasEmpty = view === PERMISSION_STATES.EMPTY || create === PERMISSION_STATES.EMPTY || 
-                                      edit === PERMISSION_STATES.EMPTY || delete_ === PERMISSION_STATES.EMPTY;
-                      
-                      let badge = 'orange';
-                      let badgeText = 'No Access';
-                      
-                      if (hasBlue && hasEmpty) {
-                        badge = 'orange';
-                        badgeText = 'Mixed';
-                      } else if (hasBlue) {
-                        badge = 'blue';
-                        badgeText = 'From Template';
-                      }
-                      
-                      return {
-                        ...screen,
-                        view,
-                        create,
-                        edit,
-                        delete: delete_,
-                        badge,
-                        badgeText
-                      };
-                    }
-                    return screen;
-                  });
-
-                  const groupHasBlue = updatedScreens.some(s => 
-                    PERMISSION_TYPES.some(p => s[p] === PERMISSION_STATES.BLUE)
-                  );
-                  const groupHasEmpty = updatedScreens.some(s => 
-                    PERMISSION_TYPES.some(p => s[p] === PERMISSION_STATES.EMPTY)
-                  );
-                  
-                  let groupBadge = 'orange';
-                  let groupBadgeText = 'No Access';
-                  
-                  if (groupHasBlue && groupHasEmpty) {
-                    groupBadge = 'orange';
-                    groupBadgeText = 'Mixed';
-                  } else if (groupHasBlue) {
-                    groupBadge = 'blue';
-                    groupBadgeText = 'From Template';
-                  }
-
-                  return {
-                    ...group,
-                    screens: updatedScreens,
-                    view: groupHasView ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
-                    create: groupHasCreate ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
-                    edit: groupHasEdit ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
-                    delete: groupHasDelete ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
-                    badge: groupBadge,
-                    badgeText: groupBadgeText
-                  };
-                });
-
-                setAccessGroups(updatedGroups);
-              }
-            } else {
-              initializeAccessGroups();
-            }
-          } catch (err) {
-            console.error('Error fetching employee permissions on next:', err);
-          } finally {
-            setLoading(false);
-          }
-        }
+      if (currentStep === 1 && selectedEmployees.length === 0) {
+        triggerAlert('warning', 'Selection Required', 'Please select at least one employee.');
+        return;
       }
       setCurrentStep(prev => prev + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -478,123 +423,99 @@ const AssignAccess = ({ userRole, onLogout }) => {
   };
 
   // ── Template Selection ──
-  const applyTemplate = async (template) => {
-    if (!template) return;
-    setLoading(true);
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/rbac/roles/${template.id}/permissions`, {
-        headers: getAuthHeaders()
-      });
-      if (response.ok) {
-        const permsList = await response.json();
-        
-        const permissions = {};
-        permsList.forEach(p => {
-          permissions[p.screenId] = {
-            view: p.viewFlg,
-            create: p.addFlg,
-            edit: p.editFlg,
-            delete: p.deleteFlg
-          };
-        });
-
-        const templateWithPerms = { ...template, permissions };
-        setSelectedTemplate(templateWithPerms);
-        setTemplateName(template.name);
-        setTemplateDescription(template.description || '');
-
-        const updatedGroups = accessGroups.map(group => {
-          let groupHasView = false;
-          let groupHasCreate = false;
-          let groupHasEdit = false;
-          let groupHasDelete = false;
-
-          const updatedScreens = group.screens.map(screen => {
-            const perms = permissions[screen.id];
-            if (perms) {
-              const view = perms.view ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
-              const create = perms.create ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
-              const edit = perms.edit ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
-              const delete_ = perms.delete ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
-              
-              if (view === PERMISSION_STATES.BLUE) groupHasView = true;
-              if (create === PERMISSION_STATES.BLUE) groupHasCreate = true;
-              if (edit === PERMISSION_STATES.BLUE) groupHasEdit = true;
-              if (delete_ === PERMISSION_STATES.BLUE) groupHasDelete = true;
-
-              const hasBlue = view === PERMISSION_STATES.BLUE || create === PERMISSION_STATES.BLUE || 
-                              edit === PERMISSION_STATES.BLUE || delete_ === PERMISSION_STATES.BLUE;
-              const hasEmpty = view === PERMISSION_STATES.EMPTY || create === PERMISSION_STATES.EMPTY || 
-                              edit === PERMISSION_STATES.EMPTY || delete_ === PERMISSION_STATES.EMPTY;
-              
-              let badge = 'orange';
-              let badgeText = 'No Access';
-              
-              if (hasBlue && hasEmpty) {
-                badge = 'orange';
-                badgeText = 'Mixed';
-              } else if (hasBlue) {
-                badge = 'blue';
-                badgeText = 'From Template';
-              } else {
-                badge = 'orange';
-                badgeText = 'No Access';
-              }
-              
-              return {
-                ...screen,
-                view,
-                create,
-                edit,
-                delete: delete_,
-                badge,
-                badgeText
-              };
-            }
-            return screen;
-          });
-
-          const groupHasBlue = updatedScreens.some(s => 
-            PERMISSION_TYPES.some(p => s[p] === PERMISSION_STATES.BLUE)
-          );
-          const groupHasEmpty = updatedScreens.some(s => 
-            PERMISSION_TYPES.some(p => s[p] === PERMISSION_STATES.EMPTY)
-          );
-          
-          let groupBadge = 'orange';
-          let groupBadgeText = 'No Access';
-          
-          if (groupHasBlue && groupHasEmpty) {
-            groupBadge = 'orange';
-            groupBadgeText = 'Mixed';
-          } else if (groupHasBlue) {
-            groupBadge = 'blue';
-            groupBadgeText = 'From Template';
-          }
-
-          return {
-            ...group,
-            screens: updatedScreens,
-            view: groupHasView ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
-            create: groupHasCreate ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
-            edit: groupHasEdit ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
-            delete: groupHasDelete ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
-            badge: groupBadge,
-            badgeText: groupBadgeText
-          };
-        });
-        
-        setAccessGroups(updatedGroups);
-        triggerAlert('success', 'Template Applied', `"${template.name}" has been applied successfully.`);
-      } else {
-        triggerAlert('error', 'Error', 'Failed to fetch permissions for the selected template.');
-      }
-    } catch (err) {
-      console.error('Error fetching template permissions:', err);
-      triggerAlert('error', 'Error', 'Failed to fetch template permissions.');
-    } finally {
-      setLoading(false);
+  const applyTemplate = (template) => {
+    if (!template || !template.permissions) {
+      triggerAlert('warning', 'Invalid Template', 'Selected template has no permissions defined.');
+      return;
     }
+
+    setSelectedTemplate(template);
+    setTemplateName(template.name);
+    setTemplateDescription(template.description || '');
+    
+    const updatedGroups = accessGroups.map(group => {
+      let groupHasView = false;
+      let groupHasCreate = false;
+      let groupHasEdit = false;
+      let groupHasDelete = false;
+
+      const updatedScreens = group.screens.map(screen => {
+        const perms = template.permissions[screen.id];
+        if (perms) {
+          const view = perms.view ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
+          const create = perms.create ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
+          const edit = perms.edit ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
+          const delete_ = perms.delete ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY;
+          
+          if (view === PERMISSION_STATES.BLUE) groupHasView = true;
+          if (create === PERMISSION_STATES.BLUE) groupHasCreate = true;
+          if (edit === PERMISSION_STATES.BLUE) groupHasEdit = true;
+          if (delete_ === PERMISSION_STATES.BLUE) groupHasDelete = true;
+
+          const hasBlue = view === PERMISSION_STATES.BLUE || create === PERMISSION_STATES.BLUE || 
+                          edit === PERMISSION_STATES.BLUE || delete_ === PERMISSION_STATES.BLUE;
+          const hasEmpty = view === PERMISSION_STATES.EMPTY || create === PERMISSION_STATES.EMPTY || 
+                          edit === PERMISSION_STATES.EMPTY || delete_ === PERMISSION_STATES.EMPTY;
+          
+          let badge = 'orange';
+          let badgeText = 'No Access';
+          
+          if (hasBlue && hasEmpty) {
+            badge = 'orange';
+            badgeText = 'Mixed';
+          } else if (hasBlue) {
+            badge = 'blue';
+            badgeText = 'From Template';
+          } else {
+            badge = 'orange';
+            badgeText = 'No Access';
+          }
+          
+          return {
+            ...screen,
+            view,
+            create,
+            edit,
+            delete: delete_,
+            badge,
+            badgeText
+          };
+        }
+        return screen;
+      });
+
+      const groupHasBlue = updatedScreens.some(s => 
+        PERMISSION_TYPES.some(p => s[p] === PERMISSION_STATES.BLUE)
+      );
+      const groupHasEmpty = updatedScreens.some(s => 
+        PERMISSION_TYPES.some(p => s[p] === PERMISSION_STATES.EMPTY)
+      );
+      
+      let groupBadge = 'orange';
+      let groupBadgeText = 'No Access';
+      
+      if (groupHasBlue && groupHasEmpty) {
+        groupBadge = 'orange';
+        groupBadgeText = 'Mixed';
+      } else if (groupHasBlue) {
+        groupBadge = 'blue';
+        groupBadgeText = 'From Template';
+      }
+
+      return {
+        ...group,
+        screens: updatedScreens,
+        view: groupHasView ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
+        create: groupHasCreate ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
+        edit: groupHasEdit ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
+        delete: groupHasDelete ? PERMISSION_STATES.BLUE : PERMISSION_STATES.EMPTY,
+        badge: groupBadge,
+        badgeText: groupBadgeText
+      };
+    });
+    
+    setAccessGroups(updatedGroups);
+    triggerAlert('success', 'Template Applied', `"${template.name}" has been applied successfully.`);
   };
 
   // ── Deselect Template ──
@@ -997,39 +918,42 @@ const AssignAccess = ({ userRole, onLogout }) => {
 
     setLoading(true);
     try {
-      const permissionsList = [];
+      const permissions = {};
       accessGroups.forEach(group => {
         group.screens.forEach(screen => {
-          permissionsList.push({
-            screenId: screen.id,
-            screenNm: screen.name,
-            groupNm: group.name,
-            screenCode: screen.code,
-            viewFlg: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
-            addFlg: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
-            editFlg: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
-            deleteFlg: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
-          });
+          permissions[screen.id] = {
+            view: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
+            create: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
+            edit: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
+            delete: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
+          };
         });
       });
 
-      const response = await fetch(`${apiBaseUrl}/api/rbac/roles`, {
+      const templateData = {
+        name: templateName.trim(),
+        code: `TMP-${String(templates.length + 1).padStart(3, '0')}`,
+        description: templateDescription.trim() || 'Custom access template',
+        permissions: permissions,
+        isDraft: saveAsDraft || false
+      };
+
+      const response = await fetch(`${apiBaseUrl}/api/access-templates`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({
-          roleNm: templateName.trim(),
-          permissions: permissionsList,
-          createdBy: getLoggedInUserName()
-        })
+        body: JSON.stringify(templateData)
       });
 
       if (response.ok) {
+        const savedTemplate = await response.json();
+        setTemplates(prev => [...prev, savedTemplate]);
+        setSelectedTemplate(savedTemplate);
         triggerAlert('success', 'Template Saved', `"${templateName}" has been saved as a template successfully!`);
-        setShowSaveTemplateModal(false);
+        setShowEditTemplateModal(false);
+        setTemplateToEdit(null);
         setTemplateName('');
         setTemplateDescription('');
         setSaveAsDraft(false);
-        fetchTemplates();
       } else {
         triggerAlert('error', 'Error', 'Failed to save template. Please try again.');
       }
@@ -1050,36 +974,44 @@ const AssignAccess = ({ userRole, onLogout }) => {
 
     setLoading(true);
     try {
-      const permissionsList = [];
+      const permissions = {};
       createTemplateGroups.forEach(group => {
         group.screens.forEach(screen => {
-          permissionsList.push({
-            screenId: screen.id,
-            screenNm: screen.name,
-            groupNm: group.name,
-            screenCode: screen.code,
-            viewFlg: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
-            addFlg: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
-            editFlg: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
-            deleteFlg: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
-          });
+          permissions[screen.id] = {
+            view: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
+            create: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
+            edit: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
+            delete: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
+          };
         });
       });
 
-      const response = await fetch(`${apiBaseUrl}/api/rbac/roles`, {
+      const templateData = {
+        name: createTemplateName.trim(),
+        code: `TMP-${String(templates.length + 1).padStart(3, '0')}`,
+        description: createTemplateDescription.trim() || 'Custom access template',
+        permissions: permissions,
+        isDraft: createTemplateIsDraft || false
+      };
+
+      const response = await fetch(`${apiBaseUrl}/api/access-templates`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({
-          roleNm: createTemplateName.trim(),
-          permissions: permissionsList,
-          createdBy: getLoggedInUserName()
-        })
+        body: JSON.stringify(templateData)
       });
 
       if (response.ok) {
+        const savedTemplate = await response.json();
+        setTemplates(prev => [...prev, savedTemplate]);
         triggerAlert('success', 'Template Created', `"${createTemplateName}" has been created successfully!`);
         closeCreateTemplateMode();
-        fetchTemplates();
+        const refreshResponse = await fetch(`${apiBaseUrl}/api/access-templates`, {
+          headers: getAuthHeaders()
+        });
+        if (refreshResponse.ok) {
+          const data = await refreshResponse.json();
+          setTemplates(data);
+        }
       } else {
         triggerAlert('error', 'Error', 'Failed to create template. Please try again.');
       }
@@ -1121,37 +1053,30 @@ const AssignAccess = ({ userRole, onLogout }) => {
 
     setLoading(true);
     try {
-      const permissionsList = [];
+      const permissions = {};
       accessGroups.forEach(group => {
         group.screens.forEach(screen => {
-          permissionsList.push({
-            screenId: screen.id,
-            screenNm: screen.name,
-            groupNm: group.name,
-            screenCode: screen.code,
-            viewFlg: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
-            addFlg: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
-            editFlg: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
-            deleteFlg: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
-          });
+          permissions[screen.id] = {
+            view: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
+            create: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
+            edit: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
+            delete: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
+          };
         });
       });
 
-      const payload = {
-        empIds: selectedEmployees.map(id => Number(id)),
-        roleId: selectedTemplate ? selectedTemplate.id : null,
-        customRoleName: null,
-        permissions: permissionsList,
-        createdBy: getLoggedInUserName()
-      };
-
-      const response = await fetch(`${apiBaseUrl}/api/rbac/save`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
+      const savePromises = selectedEmployees.map(empId => {
+        return fetch(`${apiBaseUrl}/api/employees/${empId}/permissions`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ permissions })
+        });
       });
 
-      if (response.ok) {
+      const responses = await Promise.all(savePromises);
+      const allSuccessful = responses.every(r => r.ok);
+
+      if (allSuccessful) {
         triggerAlert('success', 'Success', 'Access permissions saved successfully!');
         setTimeout(() => {
           setCurrentStep(1);
@@ -1162,8 +1087,7 @@ const AssignAccess = ({ userRole, onLogout }) => {
           initializeAccessGroups();
         }, 2000);
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        triggerAlert('error', 'Error', errorData.message || 'Some permissions failed to save. Please try again.');
+        triggerAlert('error', 'Error', 'Some permissions failed to save. Please try again.');
       }
     } catch (err) {
       console.error('Error saving permissions:', err);
@@ -1182,36 +1106,30 @@ const AssignAccess = ({ userRole, onLogout }) => {
 
     setLoading(true);
     try {
-      const permissionsList = [];
+      const permissions = {};
       accessGroups.forEach(group => {
         group.screens.forEach(screen => {
-          permissionsList.push({
-            screenId: screen.id,
-            screenNm: screen.name,
-            groupNm: group.name,
-            screenCode: screen.code,
-            viewFlg: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
-            addFlg: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
-            editFlg: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
-            deleteFlg: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
-          });
+          permissions[screen.id] = {
+            view: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
+            create: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
+            edit: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
+            delete: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
+          };
         });
       });
 
-      const payload = {
-        empIds: selectedEmployees.map(id => Number(id)),
-        roleId: selectedTemplate ? selectedTemplate.id : null,
-        customRoleName: null,
-        permissions: permissionsList
-      };
-
-      const response = await fetch(`${apiBaseUrl}/api/rbac/save`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
+      const savePromises = selectedEmployees.map(empId => {
+        return fetch(`${apiBaseUrl}/api/employees/${empId}/permissions`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ permissions, isDraft: true })
+        });
       });
 
-      if (response.ok) {
+      const responses = await Promise.all(savePromises);
+      const allSuccessful = responses.every(r => r.ok);
+
+      if (allSuccessful) {
         triggerAlert('success', 'Success', 'Access permissions saved as draft successfully!');
         setTimeout(() => {
           setCurrentStep(1);
@@ -1222,8 +1140,7 @@ const AssignAccess = ({ userRole, onLogout }) => {
           initializeAccessGroups();
         }, 2000);
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        triggerAlert('error', 'Error', errorData.message || 'Some permissions failed to save as draft. Please try again.');
+        triggerAlert('error', 'Error', 'Some permissions failed to save as draft. Please try again.');
       }
     } catch (err) {
       console.error('Error saving permissions as draft:', err);
@@ -1299,7 +1216,7 @@ const AssignAccess = ({ userRole, onLogout }) => {
 
   // ── Initialize Template Edit Groups from Template ──
   const initializeTemplateEditGroups = (template) => {
-    const groups = dbScreenGroups.map(group => {
+    const groups = SCREEN_GROUPS.map(group => {
       let groupHasView = false;
       let groupHasCreate = false;
       let groupHasEdit = false;
@@ -1393,42 +1310,16 @@ const AssignAccess = ({ userRole, onLogout }) => {
   };
 
   // ── Open Template Edit Mode ──
-  const openTemplateEditMode = async (template) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/rbac/roles/${template.id}/permissions`, {
-        headers: getAuthHeaders()
-      });
-      if (response.ok) {
-        const permsList = await response.json();
-        const permissions = {};
-        permsList.forEach(p => {
-          permissions[p.screenId] = {
-            view: p.viewFlg,
-            create: p.addFlg,
-            edit: p.editFlg,
-            delete: p.deleteFlg
-          };
-        });
-        const templateWithPerms = { ...template, permissions };
-        setTemplateEditOriginalTemplate(templateWithPerms);
-        setTemplateEditTemplateName(template.name);
-        setTemplateEditTemplateDescription(template.description || '');
-        setTemplateEditIsDraft(template.isDraft || false);
-        setTemplateEditStep(1);
-        setIsTemplateEditMode(true);
-        setIsCreateTemplateMode(false);
-        initializeTemplateEditGroups(templateWithPerms);
-        triggerAlert('info', 'Edit Mode', `Editing template: "${template.name}". Modify permissions and save.`);
-      } else {
-        triggerAlert('error', 'Error', 'Failed to fetch template permissions.');
-      }
-    } catch (err) {
-      console.error('Error fetching template permissions:', err);
-      triggerAlert('error', 'Error', 'Failed to fetch template permissions.');
-    } finally {
-      setLoading(false);
-    }
+  const openTemplateEditMode = (template) => {
+    setTemplateEditOriginalTemplate(template);
+    setTemplateEditTemplateName(template.name);
+    setTemplateEditTemplateDescription(template.description || '');
+    setTemplateEditIsDraft(template.isDraft || false);
+    setTemplateEditStep(1);
+    setIsTemplateEditMode(true);
+    setIsCreateTemplateMode(false);
+    initializeTemplateEditGroups(template);
+    triggerAlert('info', 'Edit Mode', `Editing template: "${template.name}". Modify permissions and save.`);
   };
 
   // ── Close Template Edit Mode ──
@@ -1451,54 +1342,64 @@ const AssignAccess = ({ userRole, onLogout }) => {
 
     setLoading(true);
     try {
-      const permissionsList = [];
+      const permissions = {};
       templateEditGroups.forEach(group => {
         group.screens.forEach(screen => {
-          permissionsList.push({
-            screenId: screen.id,
-            screenNm: screen.name,
-            groupNm: group.name,
-            screenCode: screen.code,
-            viewFlg: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
-            addFlg: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
-            editFlg: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
-            deleteFlg: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
-          });
+          permissions[screen.id] = {
+            view: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
+            create: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
+            edit: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
+            delete: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
+          };
         });
       });
 
+      const templateData = {
+        name: templateEditTemplateName.trim(),
+        code: templateEditOriginalTemplate?.code || `TMP-${String(templates.length + 1).padStart(3, '0')}`,
+        description: templateEditTemplateDescription.trim() || 'Custom access template',
+        permissions: permissions,
+        isDraft: templateEditIsDraft || false
+      };
+
       let response;
       if (choice === 'update' && templateEditOriginalTemplate?.id) {
-        response = await fetch(`${apiBaseUrl}/api/rbac/roles/${templateEditOriginalTemplate.id}`, {
+        response = await fetch(`${apiBaseUrl}/api/access-templates/${templateEditOriginalTemplate.id}`, {
           method: 'PUT',
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            roleNm: templateEditTemplateName.trim(),
-            permissions: permissionsList,
-            createdBy: getLoggedInUserName()
-          })
+          body: JSON.stringify(templateData)
         });
         if (response.ok) {
+          const savedTemplate = await response.json();
+          setTemplates(prev => prev.map(t => 
+            t.id === templateEditOriginalTemplate.id ? { ...savedTemplate, isDraft: templateEditIsDraft } : t
+          ));
           triggerAlert('success', 'Success', `Template "${templateEditTemplateName}" updated successfully!`);
         }
       } else {
-        response = await fetch(`${apiBaseUrl}/api/rbac/roles`, {
+        const newCode = `TMP-${String(templates.length + 1).padStart(3, '0')}`;
+        templateData.code = newCode;
+        response = await fetch(`${apiBaseUrl}/api/access-templates`, {
           method: 'POST',
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            roleNm: templateEditTemplateName.trim(),
-            permissions: permissionsList,
-            createdBy: getLoggedInUserName()
-          })
+          body: JSON.stringify(templateData)
         });
         if (response.ok) {
+          const savedTemplate = await response.json();
+          setTemplates(prev => [...prev, { ...savedTemplate, isDraft: templateEditIsDraft }]);
           triggerAlert('success', 'Success', `Template "${templateEditTemplateName}" saved as new template!`);
         }
       }
 
       if (response && response.ok) {
         closeTemplateEditMode();
-        fetchTemplates();
+        const refreshResponse = await fetch(`${apiBaseUrl}/api/access-templates`, {
+          headers: getAuthHeaders()
+        });
+        if (refreshResponse.ok) {
+          const data = await refreshResponse.json();
+          setTemplates(data);
+        }
       } else {
         triggerAlert('error', 'Error', 'Failed to save template. Please try again.');
       }
@@ -1615,45 +1516,51 @@ const AssignAccess = ({ userRole, onLogout }) => {
 
     setLoading(true);
     try {
-      const permissionsList = [];
+      const permissions = {};
       accessGroups.forEach(group => {
         group.screens.forEach(screen => {
-          permissionsList.push({
-            screenId: screen.id,
-            screenNm: screen.name,
-            groupNm: group.name,
-            screenCode: screen.code,
-            viewFlg: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
-            addFlg: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
-            editFlg: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
-            deleteFlg: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
-          });
+          permissions[screen.id] = {
+            view: screen.view === PERMISSION_STATES.BLUE || screen.view === PERMISSION_STATES.GREEN,
+            create: screen.create === PERMISSION_STATES.BLUE || screen.create === PERMISSION_STATES.GREEN,
+            edit: screen.edit === PERMISSION_STATES.BLUE || screen.edit === PERMISSION_STATES.GREEN,
+            delete: screen.delete === PERMISSION_STATES.BLUE || screen.delete === PERMISSION_STATES.GREEN
+          };
         });
       });
 
+      const templateData = {
+        name: templateName.trim(),
+        code: templateToEdit?.code || `TMP-${String(templates.length + 1).padStart(3, '0')}`,
+        description: templateDescription.trim() || 'Custom access template',
+        permissions: permissions,
+        isDraft: saveAsDraft || false
+      };
+
       let response;
       if (choice === 'update' && templateToEdit?.id) {
-        response = await fetch(`${apiBaseUrl}/api/rbac/roles/${templateToEdit.id}`, {
+        response = await fetch(`${apiBaseUrl}/api/access-templates/${templateToEdit.id}`, {
           method: 'PUT',
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            roleNm: templateName.trim(),
-            permissions: permissionsList
-          })
+          body: JSON.stringify(templateData)
         });
         if (response.ok) {
+          const savedTemplate = await response.json();
+          setTemplates(prev => prev.map(t => 
+            t.id === templateToEdit.id ? { ...savedTemplate, isDraft: saveAsDraft } : t
+          ));
           triggerAlert('success', 'Success', `Template "${templateName}" updated successfully!`);
         }
       } else {
-        response = await fetch(`${apiBaseUrl}/api/rbac/roles`, {
+        const newCode = `TMP-${String(templates.length + 1).padStart(3, '0')}`;
+        templateData.code = newCode;
+        response = await fetch(`${apiBaseUrl}/api/access-templates`, {
           method: 'POST',
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            roleNm: templateName.trim(),
-            permissions: permissionsList
-          })
+          body: JSON.stringify(templateData)
         });
         if (response.ok) {
+          const savedTemplate = await response.json();
+          setTemplates(prev => [...prev, { ...savedTemplate, isDraft: saveAsDraft }]);
           triggerAlert('success', 'Success', `Template "${templateName}" saved as new template!`);
         }
       }
@@ -1664,7 +1571,14 @@ const AssignAccess = ({ userRole, onLogout }) => {
         setSaveAsDraft(false);
         setUpdateOrSaveModal(false);
         setTemplateUpdateChoice(null);
-        fetchTemplates();
+        
+        const refreshResponse = await fetch(`${apiBaseUrl}/api/access-templates`, {
+          headers: getAuthHeaders()
+        });
+        if (refreshResponse.ok) {
+          const data = await refreshResponse.json();
+          setTemplates(data);
+        }
       } else {
         triggerAlert('error', 'Error', 'Failed to save template. Please try again.');
       }
@@ -1685,7 +1599,7 @@ const AssignAccess = ({ userRole, onLogout }) => {
   const confirmDeleteTemplate = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/api/rbac/roles/${templateToDelete}`, {
+      const response = await fetch(`${apiBaseUrl}/api/access-templates/${templateToDelete}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
@@ -2055,6 +1969,34 @@ const AssignAccess = ({ userRole, onLogout }) => {
                     }}
                   />
                 </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>Description</label>
+                  <textarea 
+                    value={createTemplateDescription}
+                    onChange={(e) => setCreateTemplateDescription(e.target.value)}
+                    placeholder="Enter template description"
+                    rows={2}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      marginTop: '4px',
+                      resize: 'vertical',
+                      fontFamily: 'inherit'
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={createTemplateIsDraft}
+                    onChange={(e) => setCreateTemplateIsDraft(e.target.checked)}
+                    style={{ width: '16px', height: '16px' }}
+                  />
+                  <label style={{ fontSize: '13px', color: '#475569' }}>Save as Draft</label>
+                </div>
               </div>
             </div>
           </div>
@@ -2395,6 +2337,34 @@ const AssignAccess = ({ userRole, onLogout }) => {
                     }}
                   />
                 </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>Description</label>
+                  <textarea 
+                    value={templateEditTemplateDescription}
+                    onChange={(e) => setTemplateEditTemplateDescription(e.target.value)}
+                    placeholder="Enter template description"
+                    rows={2}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      marginTop: '4px',
+                      resize: 'vertical',
+                      fontFamily: 'inherit'
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={templateEditIsDraft}
+                    onChange={(e) => setTemplateEditIsDraft(e.target.checked)}
+                    style={{ width: '16px', height: '16px' }}
+                  />
+                  <label style={{ fontSize: '13px', color: '#475569' }}>Save as Draft</label>
+                </div>
               </div>
             </div>
           </div>
@@ -2660,8 +2630,12 @@ const AssignAccess = ({ userRole, onLogout }) => {
                 <h4>
                   {selectedTemplate.name}
                   <span className="aa-template-status applied">✓ Applied</span>
+                  {selectedTemplate.isDraft && (
+                    <span className="aa-template-status draft">Draft</span>
+                  )}
                 </h4>
                 <span className="aa-template-code">{selectedTemplate.code}</span>
+                <p className="aa-template-desc">{selectedTemplate.description}</p>
               </div>
               <div className="aa-template-actions">
                 <button 
@@ -2700,36 +2674,24 @@ const AssignAccess = ({ userRole, onLogout }) => {
                       <div className="aa-template-info">
                         <h4>
                           {template.name}
+                          {template.isDraft && (
+                            <span className="aa-template-status draft">Draft</span>
+                          )}
                         </h4>
                         <span className="aa-template-code">{template.code}</span>
+                        <p className="aa-template-desc">{template.description}</p>
                       </div>
                       <div className="aa-template-actions">
                         <button 
                           className="aa-btn-outline-sm" 
-                          onClick={async () => {
-                            setLoading(true);
-                            try {
-                              const response = await fetch(`${apiBaseUrl}/api/rbac/roles/${template.id}/permissions`, {
-                                headers: getAuthHeaders()
-                              });
-                              if (response.ok) {
-                                const permsList = await response.json();
-                                const configuredCount = permsList.filter(p => p.viewFlg || p.addFlg || p.editFlg || p.deleteFlg).length;
-                                triggerAlert('info', 'Template Details', 
-                                  `Template: ${template.name}\n` +
-                                  `Code: ${template.code}\n` +
-                                  `Permissions: ${configuredCount} screens configured\n` +
-                                  `Created By: ${template.createdBy || getLoggedInUserName()}`
-                                );
-                              } else {
-                                triggerAlert('error', 'Error', 'Failed to fetch template details.');
-                              }
-                            } catch (err) {
-                              console.error(err);
-                              triggerAlert('error', 'Error', 'Failed to fetch template details.');
-                            } finally {
-                              setLoading(false);
-                            }
+                          onClick={() => {
+                            triggerAlert('info', 'Template Details', 
+                              `Template: ${template.name}\n` +
+                              `Code: ${template.code}\n` +
+                              `Description: ${template.description}\n` +
+                              `Permissions: ${Object.keys(template.permissions || {}).length} screens configured\n` +
+                              `Status: ${template.isDraft ? 'Draft' : 'Published'}`
+                            );
                           }}
                         >
                           <Eye size={14} /> View
@@ -3299,6 +3261,25 @@ const AssignAccess = ({ userRole, onLogout }) => {
                 }}
               />
             </div>
+            <div className="aa-form-group" style={{ marginTop: '12px' }}>
+              <label>Description</label>
+              <textarea 
+                value={templateDescription} 
+                onChange={(e) => setTemplateDescription(e.target.value)}
+                placeholder="Enter template description"
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  resize: 'vertical',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
           </div>
           <div className="aa-modal-footer">
             <button className="aa-btn-outline" onClick={() => setShowSaveTemplateModal(false)}>
@@ -3573,6 +3554,16 @@ const AssignAccess = ({ userRole, onLogout }) => {
                 ) : (
                   <div className="aa-bottom-actions">
                     <button 
+                      className="aa-btn-outline aa-btn-warning" 
+                      onClick={() => {
+                        setCreateTemplateIsDraft(true);
+                        saveCreateTemplate();
+                      }}
+                      disabled={loading}
+                    >
+                      <FileText size={16} /> Save as Draft
+                    </button>
+                    <button 
                       className="aa-btn-primary" 
                       onClick={() => {
                         setCreateTemplateIsDraft(false);
@@ -3636,6 +3627,16 @@ const AssignAccess = ({ userRole, onLogout }) => {
                 ) : (
                   <div className="aa-bottom-actions">
                     <button 
+                      className="aa-btn-outline aa-btn-warning" 
+                      onClick={() => {
+                        setTemplateEditIsDraft(true);
+                        setUpdateOrSaveModal(true);
+                      }}
+                      disabled={loading}
+                    >
+                      <FileText size={16} /> Save as Draft
+                    </button>
+                    <button 
                       className="aa-btn-primary" 
                       onClick={() => {
                         setTemplateEditIsDraft(false);
@@ -3674,6 +3675,8 @@ const AssignAccess = ({ userRole, onLogout }) => {
           <div className="aa-template-list-header">
             <div className="aa-template-list-stats">
               <span>Total Templates: <strong>{templates.length}</strong></span>
+              <span>Published: <strong>{templates.filter(t => !t.isDraft).length}</strong></span>
+              <span>Drafts: <strong>{templates.filter(t => t.isDraft).length}</strong></span>
             </div>
             <div className="aa-search-bar" style={{ marginBottom: 0, width: '280px' }}>
               <Search className="aa-search-icon" size={16} />
@@ -3702,34 +3705,21 @@ const AssignAccess = ({ userRole, onLogout }) => {
                     <div className="aa-template-item-info">
                       <h4>{template.name}</h4>
                       <span className="aa-template-code">{template.code}</span>
+                      <span className={`aa-template-status ${template.isDraft ? 'draft' : 'published'}`}>
+                        {template.isDraft ? 'Draft' : 'Published'}
+                      </span>
                     </div>
                     <div className="aa-template-item-actions">
                       <button 
                         className="aa-btn-outline-sm" 
-                        onClick={async () => {
-                          setLoading(true);
-                          try {
-                            const response = await fetch(`${apiBaseUrl}/api/rbac/roles/${template.id}/permissions`, {
-                              headers: getAuthHeaders()
-                            });
-                            if (response.ok) {
-                              const permsList = await response.json();
-                              const configuredCount = permsList.filter(p => p.viewFlg || p.addFlg || p.editFlg || p.deleteFlg).length;
-                              triggerAlert('info', 'Template Details', 
-                                `Template: ${template.name}\n` +
-                                `Code: ${template.code}\n` +
-                                `Permissions: ${configuredCount} screens configured\n` +
-                                `Created By: ${template.createdBy || 'System'}`
-                              );
-                            } else {
-                              triggerAlert('error', 'Error', 'Failed to fetch template details.');
-                            }
-                          } catch (err) {
-                            console.error(err);
-                            triggerAlert('error', 'Error', 'Failed to fetch template details.');
-                          } finally {
-                            setLoading(false);
-                          }
+                        onClick={() => {
+                          triggerAlert('info', 'Template Details', 
+                            `Template: ${template.name}\n` +
+                            `Code: ${template.code}\n` +
+                            `Description: ${template.description || 'No description'}\n` +
+                            `Permissions: ${Object.keys(template.permissions || {}).length} screens configured\n` +
+                            `Status: ${template.isDraft ? 'Draft' : 'Published'}`
+                          );
                         }}
                       >
                         <Eye size={14} /> View
@@ -3753,9 +3743,10 @@ const AssignAccess = ({ userRole, onLogout }) => {
                     </div>
                   </div>
                   <div className="aa-template-item-body">
+                    <p className="aa-template-desc">{template.description || 'No description'}</p>
                     <div className="aa-template-meta">
-                      <span>Permissions: <strong>{template.permissionsCount !== undefined ? template.permissionsCount : Object.keys(template.permissions || {}).length}</strong> screens</span>
-                      <span>Created By: <strong>{template.createdBy || getLoggedInUserName()}</strong></span>
+                      <span>Permissions: <strong>{Object.keys(template.permissions || {}).length}</strong> screens</span>
+                      <span>Created: <strong>{template.createdAt ? new Date(template.createdAt).toLocaleDateString() : 'N/A'}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -3820,6 +3811,20 @@ const AssignAccess = ({ userRole, onLogout }) => {
                         </button>
                       ) : (
                         <div className="aa-bottom-actions">
+                          <button 
+                            className="aa-btn-outline" 
+                            onClick={handleSaveAsDraft} 
+                            disabled={loading || selectedEmployees.length === 0}
+                          >
+                            {loading ? (
+                              <>Saving...</>
+                            ) : (
+                              <>
+                                <FileText size={16} /> Save as Draft
+                              </>
+                            )}
+                          </button>
+
                           <button 
                             className="aa-btn-primary" 
                             onClick={handleSaveAccess} 

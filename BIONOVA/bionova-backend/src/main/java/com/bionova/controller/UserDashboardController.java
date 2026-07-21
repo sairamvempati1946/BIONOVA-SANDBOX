@@ -3,7 +3,9 @@ package com.bionova.controller;
 import com.bionova.dto.UserDashboardResponseDto;
 import com.bionova.dto.UserDashboardResponseDto.*;
 import com.bionova.entity.Employee;
+import com.bionova.entity.MilestoneLive;
 import com.bionova.repository.EmployeeRepository;
+import com.bionova.repository.MilestoneLiveRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
@@ -31,6 +33,9 @@ public class UserDashboardController {
     private EmployeeRepository employeeRepository;
 
     @Autowired
+    private MilestoneLiveRepository milestoneLiveRepository;
+
+    @Autowired
     private com.bionova.service.ProjectLeadLagService leadLagService;
 
     @PersistenceContext
@@ -54,13 +59,35 @@ public class UserDashboardController {
 
         try {
             JsonNode root = objectMapper.readTree(result.toString());
-            return ResponseEntity.ok(mapToResponse(root));
+            return ResponseEntity.ok(mapToResponse(root, employee.getEmpId()));
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse get_user_dashboard() response", e);
         }
     }
 
-    private UserDashboardResponseDto mapToResponse(JsonNode root) {
+    @GetMapping("/my-tasks")
+    public ResponseEntity<?> getMyTasksData() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Employee employee = employeeRepository.findByEmail(email).orElse(null);
+
+        if (employee == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Object result = entityManager
+                .createNativeQuery("SELECT get_my_tasks_data(:empId)")
+                .setParameter("empId", employee.getEmpId())
+                .getSingleResult();
+
+        try {
+            JsonNode root = objectMapper.readTree(result.toString());
+            return ResponseEntity.ok(root);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse get_my_tasks_data() response", e);
+        }
+    }
+
+    private UserDashboardResponseDto mapToResponse(JsonNode root, Long empId) {
         JsonNode profile = root.path("profile");
         JsonNode summary = root.path("summary");
         JsonNode counts = root.path("taskStatusCounts");
@@ -78,6 +105,7 @@ public class UserDashboardController {
                     t.path("isOverdue").asBoolean(),
                     t.path("isDueToday").asBoolean(),
                     t.path("badge").asText("Executor"),
+                    t.path("taskSource").asText("PROJECT"),
                     mapEmployees(t.path("employees"))
             ));
         }
@@ -103,16 +131,16 @@ public class UserDashboardController {
             Long projectId = p.path("projectId").asLong(0);
 
             // Fetch Lead/Lag status for this project
-            String leadLagStatus = "ON_TIME";
-            String leadLagLabel  = "On Time";
-            String leadLagColor  = "#f59e0b";
+            String leadLagStatus = null;
+            String leadLagLabel  = null;
+            String leadLagColor  = null;
             int    daysVariance  = 0;
             if (projectId > 0) {
                 try {
                     java.util.Map<String, Object> ll = leadLagService.getLeadLagDetail(projectId);
-                    leadLagStatus = (String) ll.getOrDefault("leadLagStatus", "ON_TIME");
-                    leadLagLabel  = (String) ll.getOrDefault("leadLagLabel",  "On Time");
-                    leadLagColor  = (String) ll.getOrDefault("leadLagColor",  "#f59e0b");
+                    leadLagStatus = (String) ll.get("leadLagStatus");
+                    leadLagLabel  = (String) ll.get("leadLagLabel");
+                    leadLagColor  = (String) ll.get("leadLagColor");
                     Object dv = ll.get("daysVariance");
                     if (dv instanceof Number n) daysVariance = n.intValue();
                 } catch (Exception ignored) { /* project not live yet */ }
@@ -129,6 +157,7 @@ public class UserDashboardController {
                     p.path("progress").asDouble(),
                     p.path("tasksAssigned").asInt(),
                     p.path("openTasks").asInt(),
+                    p.path("closedTasks").asInt(),
                     p.path("status").asText("In Progress"),
                     p.path("logo").asText(null),
                     parseDate(p.path("dueDate").asText(null)),
@@ -140,15 +169,51 @@ public class UserDashboardController {
         }
 
         // 4. Task Status Counts (Donut Chart) Mapping
+        int completedVal = counts.path("Completed").asInt();
+        int inProgressVal = counts.path("In Progress").asInt();
+        int underReviewVal = counts.path("Under Review").asInt();
+        int overdueVal = counts.path("Overdue").asInt();
+        int openVal = counts.path("Open").asInt();
+        int reassignedVal = counts.path("Reassigned").asInt();
+        int reworkVal = counts.path("Rework").asInt();
+        int draftVal = counts.path("Draft").asInt();
+
         Map<String, Integer> taskStatusCounts = new HashMap<>();
-        taskStatusCounts.put("Completed",    counts.path("Completed").asInt());
-        taskStatusCounts.put("In Progress",  counts.path("In Progress").asInt());
-        taskStatusCounts.put("Under Review", counts.path("Under Review").asInt());
-        taskStatusCounts.put("Overdue",      counts.path("Overdue").asInt());
-        taskStatusCounts.put("Open",         counts.path("Open").asInt());
-        taskStatusCounts.put("Reassigned",   counts.path("Reassigned").asInt());
-        taskStatusCounts.put("Rework",       counts.path("Rework").asInt());
-        taskStatusCounts.put("Draft",        counts.path("Draft").asInt());
+        taskStatusCounts.put("Completed",    completedVal);
+        taskStatusCounts.put("In Progress",  inProgressVal);
+        taskStatusCounts.put("Under Review", underReviewVal);
+        taskStatusCounts.put("Overdue",      overdueVal);
+        taskStatusCounts.put("Open",         openVal);
+        taskStatusCounts.put("Reassigned",   reassignedVal);
+        taskStatusCounts.put("Rework",       reworkVal);
+        taskStatusCounts.put("Draft",        draftVal);
+
+        int mainCompleted = counts.path("MainCompleted").asInt();
+        int mainWip = counts.path("MainWIP").asInt();
+        int mainOpen = counts.path("MainOpen").asInt();
+
+        double total = mainCompleted + mainWip + mainOpen;
+
+        Map<String, Integer> taskStatusPercentages = new HashMap<>();
+        if (total > 0) {
+            taskStatusPercentages.put("Completed",    (int) Math.round((mainCompleted / total) * 100));
+            taskStatusPercentages.put("In Progress",  (int) Math.round((mainWip / total) * 100));
+            taskStatusPercentages.put("Open",         (int) Math.round((mainOpen / total) * 100));
+            taskStatusPercentages.put("Under Review", 0);
+            taskStatusPercentages.put("Overdue",      0);
+            taskStatusPercentages.put("Reassigned",   0);
+            taskStatusPercentages.put("Rework",       0);
+            taskStatusPercentages.put("Draft",        0);
+        } else {
+            taskStatusPercentages.put("Completed",    0);
+            taskStatusPercentages.put("In Progress",  0);
+            taskStatusPercentages.put("Open",         0);
+            taskStatusPercentages.put("Under Review", 0);
+            taskStatusPercentages.put("Overdue",      0);
+            taskStatusPercentages.put("Reassigned",   0);
+            taskStatusPercentages.put("Rework",       0);
+            taskStatusPercentages.put("Draft",        0);
+        }
 
         // 5. Recent Activity Feed Mapping
         List<RecentActivityDto> recentActivity = new ArrayList<>();
@@ -185,8 +250,8 @@ public class UserDashboardController {
         dto.setCompletedTasksCount(completedTasksCount);
 
         JsonNode trendsNode = root.path("metricsTrends");
-        dto.setAssignedTasksCard(mapMetricCard(trendsNode.path("assignedTasks"), myTasksCount + completedTasksCount + overdueTasksCount));
-        dto.setOpenTasksCard(mapMetricCard(trendsNode.path("openTasks"), counts.path("Open").asInt()));
+        dto.setAssignedTasksCard(mapMetricCard(trendsNode.path("assignedTasks"), (int) total));
+        dto.setOpenTasksCard(mapMetricCard(trendsNode.path("openTasks"), counts.path("Open").asInt() + counts.path("Draft").asInt()));
         dto.setInProgressCard(mapMetricCard(trendsNode.path("inProgress"), counts.path("In Progress").asInt()));
         dto.setOverdueTasksCard(mapMetricCard(trendsNode.path("overdueTasks"), overdueTasksCount));
         dto.setCompletedTasksCard(mapMetricCard(trendsNode.path("completedTasks"), completedTasksCount));
@@ -196,7 +261,37 @@ public class UserDashboardController {
         dto.setUpcomingTasks(upcomingTasks);
         dto.setMyProjects(myProjects);
         dto.setTaskStatusCounts(taskStatusCounts);
+        dto.setTaskStatusPercentages(taskStatusPercentages);
         dto.setOverallCompletionPercentage(summary.path("overallCompletion").asDouble());
+
+        // Calculate Milestone Progress
+        List<MilestoneLive> userMilestones = milestoneLiveRepository.findMilestonesByEmpId(empId);
+        int msCompleted = 0, msInProgress = 0, msOpen = 0, msDelayed = 0;
+        LocalDate today = LocalDate.now();
+        for (MilestoneLive m : userMilestones) {
+            String sts = m.getMlstnSts() != null ? m.getMlstnSts().toUpperCase() : "LIVE";
+            if (sts.equals("COMPLETED") || sts.equals("CLOSED")) {
+                msCompleted++;
+            } else if (sts.equals("HOLD")) {
+                msDelayed++;
+            } else {
+                // It is LIVE or other active state
+                if (m.getEndDt() != null && today.isAfter(m.getEndDt())) {
+                    msDelayed++;
+                } else if (m.getStDt() != null && today.isBefore(m.getStDt())) {
+                    msOpen++; // Not started yet
+                } else {
+                    msInProgress++;
+                }
+            }
+        }
+        Map<String, Integer> milestoneStatus = new HashMap<>();
+        milestoneStatus.put("total", userMilestones.size());
+        milestoneStatus.put("completed", msCompleted);
+        milestoneStatus.put("inProgress", msInProgress);
+        milestoneStatus.put("notStarted", msOpen);
+        milestoneStatus.put("delayed", msDelayed);
+        dto.setMilestoneStatus(milestoneStatus);
 
         JsonNode performanceNode = root.path("performance");
         dto.setProductivity(mapPerformanceMetric(performanceNode.path("productivity")));

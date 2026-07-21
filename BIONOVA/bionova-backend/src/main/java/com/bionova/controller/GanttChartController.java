@@ -66,7 +66,21 @@ public class GanttChartController {
     }
 
     /**
-     * Get flat list of Gantt items (Project, Milestones, Tasks) for a project
+     * Get Gantt data for ALL live projects (Project → Milestones → Tasks for each).
+     * Use this endpoint to render a cross-project Gantt chart.
+     */
+    @GetMapping("/all")
+    public ResponseEntity<List<GanttTaskDto>> getAllProjectsGanttData() {
+        List<ProjectLive> allProjects = projectLiveRepository.findAll();
+        List<GanttTaskDto> result = new ArrayList<>();
+        for (ProjectLive project : allProjects) {
+            result.addAll(buildGanttForProject(project));
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Get flat list of Gantt items (Project, Milestones, Tasks) for a single project.
      */
     @GetMapping("/{projectId}")
     public ResponseEntity<?> getGanttData(@PathVariable Long projectId) {
@@ -74,51 +88,59 @@ public class GanttChartController {
         if (project == null) {
             return ResponseEntity.notFound().build();
         }
+        return ResponseEntity.ok(buildGanttForProject(project));
+    }
 
-        List<GanttTaskDto> ganttTasks = new ArrayList<>();
+    /**
+     * Shared helper: builds a flat list of GanttTaskDto rows for a given project.
+     * Order: Project row first, then its Milestones, then Tasks under each Milestone.
+     */
+    private List<GanttTaskDto> buildGanttForProject(ProjectLive project) {
 
-        // 1. Fetch Milestones
-        List<MilestoneLive> milestones = milestoneLiveRepository.findByPrjId(projectId);
+        // 1. Fetch Milestones for this project
+        List<MilestoneLive> milestones = milestoneLiveRepository.findByPrjId(project.getPrjId());
 
-        // Fetch all employees in a map for quick lookup
-        Map<Long, String> employeeNameMap = employeeRepository.findAll().stream()
-                .collect(Collectors.toMap(
-                        Employee::getEmpId,
-                        e -> e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : ""),
-                        (v1, v2) -> v1 // In case of duplicate keys
-                ));
-
-        // 2. Fetch Tasks for all these milestones and group them by milestone ID
+        // 2. Fetch & group Tasks; collect employee IDs
         Map<Long, List<TaskLive>> tasksByMilestone = new HashMap<>();
+        java.util.Set<Long> empIds = new java.util.HashSet<>();
         for (MilestoneLive ms : milestones) {
             List<TaskLive> msTasks = taskLiveRepository.findByMilestoneId(ms.getMId());
             tasksByMilestone.put(ms.getMId(), msTasks);
+            for (TaskLive t : msTasks) {
+                if (t.getEmpId() != null)    empIds.add(t.getEmpId());
+                if (t.getExtEmpId() != null) empIds.add(t.getExtEmpId());
+            }
         }
 
-        // 3. Compute progress for Project
-        double projectProgress = 0.0;
-        int totalMilestones = milestones.size();
-        double totalMilestoneProgressSum = 0.0;
+        // 3. Resolve employee names
+        Map<Long, String> employeeNameMap = new HashMap<>();
+        if (!empIds.isEmpty()) {
+            employeeRepository.findAllById(empIds).forEach(e ->
+                employeeNameMap.put(e.getEmpId(),
+                    e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : ""))
+            );
+        }
 
+        // 4. Build Milestone + Task rows, accumulate progress
+        double totalMilestoneProgressSum = 0.0;
         List<GanttTaskDto> milestoneDtos = new ArrayList<>();
+        List<GanttTaskDto> taskDtos      = new ArrayList<>();
 
         for (MilestoneLive ms : milestones) {
             List<TaskLive> msTasks = tasksByMilestone.getOrDefault(ms.getMId(), new ArrayList<>());
 
-            // Compute Milestone Progress
+            // Milestone progress
             double milestoneProgress = 0.0;
             if ("COMPLETED".equalsIgnoreCase(ms.getMlstnSts()) || "CLOSED".equalsIgnoreCase(ms.getMlstnSts())) {
                 milestoneProgress = 1.0;
             } else if (!msTasks.isEmpty()) {
                 double taskProgressSum = 0.0;
-                for (TaskLive task : msTasks) {
-                    taskProgressSum += getTaskProgressValue(task.getTaskSts() != null ? task.getTaskSts().getStatusNm() : "OPEN");
-                }
+                for (TaskLive task : msTasks) taskProgressSum += getTaskProgressValue(task);
                 milestoneProgress = taskProgressSum / msTasks.size();
             }
             totalMilestoneProgressSum += milestoneProgress;
 
-            // Fetch Milestone Baseline Dates (from draft milestone if available)
+            // Milestone baseline dates
             final List<LocalDate> msDates = new ArrayList<>();
             msDates.add(ms.getStDt());
             msDates.add(ms.getEndDt());
@@ -129,8 +151,7 @@ public class GanttChartController {
                 });
             }
 
-            // Create Milestone Gantt Item
-            GanttTaskDto msDto = new GanttTaskDto(
+            milestoneDtos.add(new GanttTaskDto(
                     "MS-" + ms.getMId(),
                     ms.getMlstnTtl(),
                     "milestone",
@@ -144,15 +165,13 @@ public class GanttChartController {
                     ms.getMlstnDepMId() != null ? "MS-" + ms.getMlstnDepMId() : null,
                     msDates.get(0),
                     msDates.get(1)
-            );
-            milestoneDtos.add(msDto);
+            ));
 
-            // Create Task Gantt Items
+            // Task rows under this milestone
             for (TaskLive task : msTasks) {
-                double taskProgress = getTaskProgressValue(task.getTaskSts() != null ? task.getTaskSts().getStatusNm() : "OPEN");
-                String assigneeName = task.getEmpId() != null ? employeeNameMap.get(task.getEmpId()) : null;
+                double taskProgress  = getTaskProgressValue(task);
+                String assigneeName  = task.getEmpId() != null ? employeeNameMap.get(task.getEmpId()) : null;
 
-                // Fetch Task Baseline Dates (from draft task if available)
                 final List<LocalDate> taskDates = new ArrayList<>();
                 taskDates.add(task.getStDt());
                 taskDates.add(task.getEndDt());
@@ -163,7 +182,7 @@ public class GanttChartController {
                     });
                 }
 
-                GanttTaskDto taskDto = new GanttTaskDto(
+                taskDtos.add(new GanttTaskDto(
                         "TSK-" + task.getTaskId(),
                         task.getTaskNm(),
                         "task",
@@ -171,25 +190,25 @@ public class GanttChartController {
                         task.getEndDt(),
                         taskProgress,
                         "MS-" + ms.getMId(),
-                        task.getTaskSts() != null ? task.getTaskSts().getStatusNm() : "OPEN",
+                        task.getTaskSts() != null ? task.getTaskSts().getStatusNm() : "Open",
                         task.getTaskCd(),
                         assigneeName,
                         task.getDepTaskId() != null ? "TSK-" + task.getDepTaskId() : null,
                         taskDates.get(0),
                         taskDates.get(1)
-                );
-                ganttTasks.add(taskDto);
+                ));
             }
         }
 
-        // Finalize Project Progress
+        // 5. Compute overall project progress
+        double projectProgress = 0.0;
         if ("CLOSED".equalsIgnoreCase(project.getPrjSts())) {
             projectProgress = 1.0;
-        } else if (totalMilestones > 0) {
-            projectProgress = totalMilestoneProgressSum / totalMilestones;
+        } else if (!milestones.isEmpty()) {
+            projectProgress = totalMilestoneProgressSum / milestones.size();
         }
 
-        // Fetch Project Baseline Dates (from draft project if available)
+        // Project baseline dates
         final List<LocalDate> prjDates = new ArrayList<>();
         prjDates.add(project.getStDt());
         prjDates.add(project.getEndDt());
@@ -200,7 +219,6 @@ public class GanttChartController {
             });
         }
 
-        // Add Project Gantt Item at the top
         GanttTaskDto prjDto = new GanttTaskDto(
                 "PRJ-" + project.getPrjId(),
                 project.getPrjNm(),
@@ -217,28 +235,25 @@ public class GanttChartController {
                 prjDates.get(1)
         );
 
-        // Assemble the list: Project first, then Milestones & Tasks
+        // 6. Assemble: Project → Milestones → Tasks
         List<GanttTaskDto> finalData = new ArrayList<>();
         finalData.add(prjDto);
         finalData.addAll(milestoneDtos);
-        finalData.addAll(ganttTasks);
-
-        return ResponseEntity.ok(finalData);
+        finalData.addAll(taskDtos);
+        return finalData;
     }
 
-    private double getTaskProgressValue(String status) {
-        if (status == null) return 0.0;
-        switch (status.toUpperCase()) {
-            case "COMPLETED":
-                return 1.0;
-            case "UNDER_REVIEW":
-                return 0.8;
-            case "WIP":
-                return 0.5;
-            case "OPEN":
-            case "REWORK":
-            default:
-                return 0.0;
+    private double getTaskProgressValue(TaskLive task) {
+        if (task == null || task.getTaskSts() == null) return 0.0;
+        String status    = task.getTaskSts().getStatusNm();
+        String subStatus = task.getSubStatus() != null ? task.getSubStatus() : "";
+        if ("Completed".equalsIgnoreCase(status)) {
+            return 1.0;
+        } else if ("WIP".equalsIgnoreCase(status)) {
+            if ("Under Review".equalsIgnoreCase(subStatus)) return 0.8;
+            if ("Rework".equalsIgnoreCase(subStatus))       return 0.2;
+            return 0.5;
         }
+        return 0.0;
     }
 }

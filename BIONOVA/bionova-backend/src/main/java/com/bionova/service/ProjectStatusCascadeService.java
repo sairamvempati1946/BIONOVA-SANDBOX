@@ -9,6 +9,7 @@ import com.bionova.repository.ProjectLiveRepository;
 import com.bionova.repository.TaskLiveRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -28,17 +29,17 @@ public class ProjectStatusCascadeService {
     @Autowired
     private ProjectLeadLagService projectLeadLagService;
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRED)
     public void cascadeStatusFromTask(Long taskId) {
         TaskLive task = taskLiveRepository.findById(taskId).orElse(null);
         if (task == null) return;
 
         // Release downstream sequential tasks if this task is completed
-        if (task.getTaskSts() != null && "COMPLETED".equalsIgnoreCase(task.getTaskSts().getStatusNm())) {
+        if (task.getTaskSts() != null && "Completed".equalsIgnoreCase(task.getTaskSts().getStatusNm())) {
             List<TaskLive> downstreamTasks = taskLiveRepository.findByDepTaskId(taskId);
             for (TaskLive dt : downstreamTasks) {
                 String dtSts = dt.getTaskSts() != null ? dt.getTaskSts().getStatusNm() : "";
-                if ("DRAFT".equalsIgnoreCase(dtSts) || "".equalsIgnoreCase(dtSts)) {
+                if ("Draft".equalsIgnoreCase(dtSts) || "".equalsIgnoreCase(dtSts)) {
                     dt.setTaskSts(TaskStatusMaster.OPEN);
                     taskLiveRepository.save(dt);
                 }
@@ -57,11 +58,11 @@ public class ProjectStatusCascadeService {
         boolean anyStarted = false;
 
         for (TaskLive t : milestoneTasks) {
-            String sts = t.getTaskSts() != null ? t.getTaskSts().getStatusNm() : "OPEN";
-            if (!"COMPLETED".equals(sts)) {
+            String sts = t.getTaskSts() != null ? t.getTaskSts().getStatusNm() : "Open";
+            if (!"Completed".equalsIgnoreCase(sts)) {
                 allCompleted = false;
             }
-            if ("WIP".equals(sts) || "UNDER_REVIEW".equals(sts) || "COMPLETED".equals(sts)) {
+            if ("WIP".equalsIgnoreCase(sts) || "Completed".equalsIgnoreCase(sts)) {
                 anyStarted = true;
             }
         }
@@ -124,12 +125,12 @@ public class ProjectStatusCascadeService {
      * Recursively cascades the REWORK status to all downstream tasks that depend on the given task.
      * This ensures that if a task is rejected, any tasks relying on its completion are also reset.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRED)
     public void cascadeReworkDownstream(Long taskId) {
         List<TaskLive> downstreamTasks = taskLiveRepository.findByDepTaskId(taskId);
         for (TaskLive dt : downstreamTasks) {
-            String sts = dt.getTaskSts() != null ? dt.getTaskSts().getStatusNm() : "OPEN";
-            if (!"OPEN".equals(sts)) {
+            String sts = dt.getTaskSts() != null ? dt.getTaskSts().getStatusNm() : "Open";
+            if (!"Open".equalsIgnoreCase(sts)) {
                 dt.setTaskSts(TaskStatusMaster.OPEN);
                 taskLiveRepository.save(dt);
                 
@@ -140,5 +141,73 @@ public class ProjectStatusCascadeService {
                 cascadeStatusFromTask(dt.getTaskId());
             }
         }
+    }
+
+    /**
+     * Cascades project status updates (LIVE, HOLD, CLOSED) down to all milestones and tasks of the project.
+     */
+    @Transactional(propagation = Propagation.REQUIRED)
+    public void cascadeStatusFromProject(Long projectId, String newProjectStatus) {
+        ProjectLive project = projectLiveRepository.findById(projectId).orElse(null);
+        if (project == null) return;
+
+        List<MilestoneLive> milestones = milestoneLiveRepository.findByPrjId(projectId);
+        
+        String milestoneStatus = null;
+        TaskStatusMaster taskStatus = null;
+        
+        if ("HOLD".equalsIgnoreCase(newProjectStatus)) {
+            milestoneStatus = "HOLD";
+            taskStatus = TaskStatusMaster.HOLD;
+        } else if ("CLOSED".equalsIgnoreCase(newProjectStatus)) {
+            milestoneStatus = "COMPLETED";
+            taskStatus = TaskStatusMaster.COMPLETED;
+        } else if ("LIVE".equalsIgnoreCase(newProjectStatus)) {
+            milestoneStatus = "LIVE";
+            taskStatus = TaskStatusMaster.OPEN;
+        }
+
+        if (milestoneStatus == null) return;
+
+        for (MilestoneLive ms : milestones) {
+            if ("HOLD".equals(milestoneStatus)) {
+                if (!"COMPLETED".equalsIgnoreCase(ms.getMlstnSts()) && !"CLOSED".equalsIgnoreCase(ms.getMlstnSts())) {
+                    ms.setMlstnSts("HOLD");
+                    milestoneLiveRepository.save(ms);
+                }
+            } else if ("COMPLETED".equals(milestoneStatus)) {
+                ms.setMlstnSts("COMPLETED");
+                milestoneLiveRepository.save(ms);
+            } else if ("LIVE".equals(milestoneStatus)) {
+                if ("HOLD".equalsIgnoreCase(ms.getMlstnSts())) {
+                    ms.setMlstnSts("LIVE");
+                    milestoneLiveRepository.save(ms);
+                }
+            }
+
+            List<TaskLive> tasks = taskLiveRepository.findByMilestoneId(ms.getMId());
+            for (TaskLive t : tasks) {
+                if (taskStatus == TaskStatusMaster.HOLD) {
+                    String sts = t.getTaskSts() != null ? t.getTaskSts().getStatusNm() : "";
+                    if (!"Completed".equalsIgnoreCase(sts)) {
+                        t.setTaskSts(TaskStatusMaster.HOLD);
+                        taskLiveRepository.save(t);
+                    }
+                } else if (taskStatus == TaskStatusMaster.COMPLETED) {
+                    t.setTaskSts(TaskStatusMaster.COMPLETED);
+                    if (t.getActCmpDt() == null) {
+                        t.setActCmpDt(java.time.LocalDate.now());
+                    }
+                    taskLiveRepository.save(t);
+                } else if (taskStatus == TaskStatusMaster.OPEN) {
+                    if (t.getTaskSts() != null && "Hold".equalsIgnoreCase(t.getTaskSts().getStatusNm())) {
+                        t.setTaskSts(TaskStatusMaster.OPEN);
+                        taskLiveRepository.save(t);
+                    }
+                }
+            }
+        }
+        
+        projectLeadLagService.recalculateAndPersist(projectId);
     }
 }

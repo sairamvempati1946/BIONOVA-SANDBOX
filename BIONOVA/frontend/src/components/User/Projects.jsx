@@ -67,50 +67,37 @@ const MyProjects = ({ userRole, onLogout }) => {
         const empId = profRes?.empId;
         const isAdmin = profRes?.email === 'vsv.vempati@gmail.com';
 
-        // Filter tasks to only user tasks (personal view filters by employee ID)
-        const userTasks = (taskRes || []).filter(t => (t.empId || t.empid) === empId);
+        // Filter tasks to only user tasks
+        const userTasks = (taskRes || []).filter(t => isAdmin || t.empId === empId);
         setTasks(userTasks);
 
         // Filter milestones: keep milestones that have at least one task assigned to the user
         const userMilestones = (msRes || []).filter(m => {
-          const mId = m.mId || m.mid || m.id;
-          return userTasks.some(t => (t.mId || t.mid || t.milestoneId || t.drftMId || t.drft_m_id) === mId);
+          if (isAdmin) return true;
+          return userTasks.some(t => t.mId === m.mId);
         });
         setMilestones(userMilestones);
 
         // Filter projects: keep projects that have at least one milestone in userMilestones
         const userProjects = (projRes || []).filter(p => {
-          const prjId = p.prjId || p.prjid || p.id;
-          return userMilestones.some(m => (m.prjId || m.prjid) === prjId);
+          if (isAdmin) return true;
+          return userMilestones.some(m => m.prjId === p.prjId);
         });
 
         // Map projects to match the page expectations
         const mapped = userProjects.map(proj => {
-          const companyName = coyRes?.find(c => (c.coyId || c.coyid) === (proj.coyId || proj.coyid))?.coyNm || (proj.coyNm || proj.coynm) || `Company ${proj.coyId || proj.coyid}`;
-          const plantName = pltRes?.find(pl => (pl.pltId || pl.pltid) === (proj.pltId || proj.pltid))?.pltNm || (proj.pltNm || proj.pltnm) || `Plant ${proj.pltId || proj.pltid}`;
-          const deptName = deptRes?.find(d => (d.deptId || d.deptid) === (proj.deptId || proj.deptid))?.deptNm || (proj.deptNm || proj.deptnm) || `Dept ${proj.deptId || proj.deptid}`;
+          const companyName = coyRes?.find(c => c.coyId === proj.coyId)?.coyNm || `Company ${proj.coyId}`;
+          const plantName = pltRes?.find(pl => pl.pltId === proj.pltId)?.pltNm || `Plant ${proj.pltId}`;
+          const deptName = deptRes?.find(d => d.deptId === proj.deptId)?.deptNm || `Dept ${proj.deptId}`;
 
-          const projId = proj.prjId || proj.prjid || proj.id;
-          const projMilestones = userMilestones.filter(m => (m.prjId || m.prjid) === projId);
-          const projTasks = userTasks.filter(t => {
-            const tMId = t.mId || t.mid || t.milestoneId || t.drftMId || t.drft_m_id;
-            return projMilestones.some(m => (m.mId || m.mid || m.id) === tMId);
-          });
+          const projMilestones = userMilestones.filter(m => m.prjId === proj.prjId);
+          const projTasks = userTasks.filter(t => projMilestones.some(m => m.mId === t.mId));
 
           const totalTasksCount = projTasks.length;
-          const completedTasksCount = projTasks.filter(t => (t.taskSts || t.tasksts || "").toUpperCase() === 'COMPLETED').length;
-          const wipTasksCount = projTasks.filter(t => {
-            const s = (t.taskSts || t.tasksts || "").toUpperCase();
-            return s === 'WIP' || s === 'IN_PROGRESS';
-          }).length;
-          const openTasksCount = projTasks.filter(t => {
-            const s = (t.taskSts || t.tasksts || "").toUpperCase();
-            return s === 'OPEN' || s === 'REWORK';
-          }).length;
-          const reviewTasksCount = projTasks.filter(t => {
-            const s = (t.taskSts || t.tasksts || "").toUpperCase();
-            return s === 'SUBMIT_REVIEW' || s === 'UNDER_REVIEW';
-          }).length;
+          const completedTasksCount = projTasks.filter(t => t.taskSts === 'COMPLETED').length;
+          const wipTasksCount = projTasks.filter(t => t.taskSts === 'WIP').length;
+          const openTasksCount = projTasks.filter(t => t.taskSts === 'OPEN' || t.taskSts === 'REWORK').length;
+          const reviewTasksCount = projTasks.filter(t => t.taskSts === 'SUBMIT_REVIEW' || t.taskSts === 'UNDER_REVIEW').length;
 
           let progressPct = 0;
           if (totalTasksCount > 0) {
@@ -118,40 +105,37 @@ const MyProjects = ({ userRole, onLogout }) => {
           }
 
           return {
-            id: projId,
-            prjId: projId,
-            name: proj.prjNm || proj.prjnm,
+            id: proj.prjId,
+            prjId: proj.prjId,
+            name: proj.prjNm,
             company: companyName,
             plant: plantName,
             role: profRes?.firstName ? `${profRes.firstName} ${profRes.lastName || ''}` : "Team Member",
             tasksAssigned: totalTasksCount,
             openTasks: openTasksCount + wipTasksCount + reviewTasksCount,
-            status: proj.prjSts || proj.prjsts || "In Progress",
+            status: proj.prjSts || "In Progress",
             progress: progressPct,
             image: proj.logo || "https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=200&h=120&fit=crop",
             manager: "Siva Kumar",
-            startDate: proj.stDt || proj.stdt || "N/A",
-            targetDate: proj.endDt || proj.enddt || "N/A",
-            code: proj.prjCd || proj.prjcd || `PRJ-${projId}`,
+            startDate: proj.stDt || "N/A",
+            targetDate: proj.endDt || "N/A",
+            code: proj.prjCd || `PRJ-${proj.prjId}`,
             type: "Construction",
-            location: proj.loc || proj.location || "N/A",
+            location: "N/A",
             client: companyName,
             department: deptName,
             reportingTo: "Siva Kumar",
-            description: proj.prjDesc || proj.prjdesc || "",
-            milestones: projMilestones.map(m => {
-              const mId = m.mId || m.mid || m.id;
-              return {
-                id: mId,
-                mId: mId,
-                name: m.mlstnTtl || m.mlstnttl,
-                date: m.endDt || m.enddt || "N/A",
-                start: m.stDt || m.stdt || "N/A",
-                desc: m.mlstnDesc || m.mlstndesc || "",
-                status: m.mlstnSts || m.mlstnsts || "Not Started",
-                days: m.mlstnDays || m.mlstndays || 0
-              };
-            }),
+            description: proj.prjDesc || "",
+            milestones: projMilestones.map(m => ({
+              id: m.mId,
+              mId: m.mId,
+              name: m.mlstnTtl,
+              date: m.endDt || "N/A",
+              start: m.stDt || "N/A",
+              desc: m.mlstnDesc || "",
+              status: m.mlstnSts || "Not Started",
+              days: m.mlstnDays || 0
+            })),
             taskSummary: {
               assigned: totalTasksCount,
               inProgress: wipTasksCount,
@@ -310,11 +294,8 @@ const MyProjects = ({ userRole, onLogout }) => {
                   </div>
                   <div className="mp-detail-meta">
                     <div className="mp-meta-item">
-                      <Users size={14} style={{ color: "#10b981" }} />
-                      <div>
-                        <span className="mp-meta-label">Project Manager</span>
-                        <span className="mp-meta-value bold">{selectedProject.manager}</span>
-                      </div>
+                      <span className="mp-meta-label">Project Manager</span>
+                      <span className="mp-meta-value bold">{selectedProject.manager}</span>
                     </div>
                     <div className="mp-meta-item">
                       <Calendar size={14} style={{ color: "#3b82f6" }} />

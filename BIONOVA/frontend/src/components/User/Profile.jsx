@@ -21,15 +21,7 @@ import {
   Heart,
   CheckCircle2,
   XCircle,
-  AlertCircle,
-  Monitor,
-  Smartphone,
-  Globe,
-  ArrowRight,
-  HelpCircle,
-  Headphones,
-  FileCode,
-  Info
+  AlertCircle
 } from "lucide-react";
 import "../../styles/profile.css";
 
@@ -47,57 +39,6 @@ const Profile = ({ userRole, onLogout }) => {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  // Login Activity State (fetched from backend)
-  const [loginActivity, setLoginActivity] = useState([]);
-
-  const getDeviceType = (deviceInfo = "") => {
-    const info = deviceInfo.toLowerCase();
-    if (info.includes("android") || info.includes("ios") || info.includes("mobile") || info.includes("phone")) {
-      return "mobile";
-    }
-    if (info.includes("windows") || info.includes("mac") || info.includes("chrome") || info.includes("firefox") || info.includes("safari") || info.includes("edge")) {
-      return "desktop";
-    }
-    return "other";
-  };
-
-  const formatDateTime = (dateStr) => {
-    if (!dateStr) return "N/A";
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      const day = String(d.getDate()).padStart(2, '0');
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const month = months[d.getMonth()];
-      const year = d.getFullYear();
-      let hours = d.getHours();
-      const minutes = String(d.getMinutes()).padStart(2, '0');
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12;
-      hours = hours ? hours : 12;
-      const strTime = String(hours).padStart(2, '0') + ':' + minutes + ' ' + ampm;
-      return `${day}-${month}-${year} ${strTime}`;
-    } catch (e) {
-      return dateStr;
-    }
-  };
-
-  const getDeviceIcon = (type) => {
-    switch (type) {
-      case 'desktop': return <Monitor size={18} />;
-      case 'mobile': return <Smartphone size={18} />;
-      default: return <Globe size={18} />;
-    }
-  };
-
-  const getDeviceColor = (type) => {
-    switch (type) {
-      case 'desktop': return '#ea4335'; // Red for Chrome
-      case 'mobile': return '#34a853'; // Green for Android
-      default: return '#4285f4'; // Blue for Edge/Globe
-    }
-  };
 
   // Password fields state
   const [currentPassword, setCurrentPassword] = useState("");
@@ -280,18 +221,6 @@ const Profile = ({ userRole, onLogout }) => {
         }
       }
     } catch (err) { console.error("Error fetching employees:", err); }
-
-    try {
-      const res = await fetch(`${API_BASE}/settings`, { headers });
-      if (res.ok) {
-        const settingsData = await res.json();
-        if (settingsData && settingsData.loginActivity) {
-          setLoginActivity(settingsData.loginActivity);
-        }
-      }
-    } catch (err) {
-      console.error("Error fetching settings/login activity:", err);
-    }
   };
 
   useEffect(() => {
@@ -315,20 +244,12 @@ const Profile = ({ userRole, onLogout }) => {
     return c ? c.coyNm : `Company ID: ${id}`;
   };
 
-  const getPlantName = (id) => {
-    const p = plants.find(pl => String(pl.pltId) === String(id));
-    return p ? p.pltNm : `Plant ID: ${id}`;
-  };
-
   const profileDetails = profile ? {
     employeeCode: profile.empCode || "N/A",
     employeeName: `${profile.fstNm || ""} ${profile.lstNm || ""}`.trim() || "N/A",
     email: profile.email || "N/A",
     mobileNumber: profile.mobNum || "N/A",
-    // Show plant name if plant exists, else company name
-    companyName: profile.pltId 
-      ? getPlantName(profile.pltId) 
-      : (profile.coyId ? getCompanyName(profile.coyId) : "N/A"),
+    companyName: profile.coyId ? getCompanyName(profile.coyId) : "N/A",
     department: profile.deptId ? getDeptName(profile.deptId) : "N/A",
     role: profile.role || "N/A",
     bloodGroup: profile.bldGrp || profile.bloodGroup || "N/A",
@@ -350,9 +271,6 @@ const Profile = ({ userRole, onLogout }) => {
     dateOfJoining: "Loading...",
     status: "Loading..."
   };
-
-  // Determine organization label based on profile
-  const orgLabel = profile?.pltId ? "Plant" : "Company";
 
   return (
     <div className="pf-shell-container">
@@ -445,9 +363,8 @@ const Profile = ({ userRole, onLogout }) => {
                     <div className="pf-detail-value">{profileDetails.mobileNumber}</div>
                   </div>
 
-                  {/* ─── Dynamic label for Company/Plant ─── */}
                   <div className="pf-detail-row">
-                    <div className="pf-detail-label"><Building size={16} />{orgLabel}</div>
+                    <div className="pf-detail-label"><Building size={16} />Company</div>
                     <span className="pf-detail-separator">:</span>
                     <div className="pf-detail-value">{profileDetails.companyName}</div>
                   </div>
@@ -632,114 +549,6 @@ const Profile = ({ userRole, onLogout }) => {
                 </button>
               </div>
             </div>
-            
-            {/* Login Activity Card */}
-            <div className="pf-card">
-              <div className="pf-card-header">
-                <Monitor className="pf-card-icon" size={24} />
-                <div className="pf-card-title-wrap">
-                  <h2>Login Activity</h2>
-                  <p>Review your recent login activity and devices.</p>
-                </div>
-              </div>
-
-              <table className="pf-table">
-                <thead>
-                  <tr>
-                    <th>Device</th>
-                    <th>Login Time</th>
-                    <th>Location</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                   {loginActivity.map((log, index) => {
-                     const devType = getDeviceType(log.deviceInfo);
-                     return (
-                       <tr key={log.activityId || index}>
-                         <td>
-                           <div className="pf-device-cell">
-                             <span style={{ color: getDeviceColor(devType) }}>
-                               {getDeviceIcon(devType)}
-                             </span>
-                             {log.deviceInfo || "Unknown Device"}
-                           </div>
-                         </td>
-                         <td>{formatDateTime(log.loginDt)}</td>
-                         <td>India</td>
-                         <td>
-                           <span className={`pf-status-badge-sm ${log.status === 'Active' ? 'active' : 'logged-out'}`}>
-                             {log.status || "Logged Out"}
-                           </span>
-                         </td>
-                       </tr>
-                     );
-                   })}
-                </tbody>
-              </table>
-              
-              <button className="pf-link" style={{ marginTop: "16px" }}>
-                View full login activity <ArrowRight size={14} />
-              </button>
-            </div>
-
-            {/* Support Items */}
-            <div className="pf-card">
-              <div className="pf-support-list">
-                <div className="pf-support-item">
-                  <div className="pf-support-item-left">
-                    <div className="pf-support-item-icon">
-                      <HelpCircle size={18} />
-                    </div>
-                    <div className="pf-support-item-text">
-                      <h3>Help Center</h3>
-                      <p>Get help, view FAQs and guides.</p>
-                    </div>
-                  </div>
-                  <ChevronRight size={18} className="pf-support-item-right" />
-                </div>
-
-                <div className="pf-support-item">
-                  <div className="pf-support-item-left">
-                    <div className="pf-support-item-icon">
-                      <Headphones size={18} />
-                    </div>
-                    <div className="pf-support-item-text">
-                      <h3>Contact Administrator</h3>
-                      <p>Reach out to system administrator</p>
-                    </div>
-                  </div>
-                  <ChevronRight size={18} className="pf-support-item-right" />
-                </div>
-
-                <div className="pf-support-item">
-                  <div className="pf-support-item-left">
-                    <div className="pf-support-item-icon">
-                      <FileCode size={18} />
-                    </div>
-                    <div className="pf-support-item-text">
-                      <h3>User Guide</h3>
-                      <p>View user manual and documentation.</p>
-                    </div>
-                  </div>
-                  <ChevronRight size={18} className="pf-support-item-right" />
-                </div>
-
-                <div className="pf-support-item">
-                  <div className="pf-support-item-left">
-                    <div className="pf-support-item-icon gray">
-                      <Info size={18} />
-                    </div>
-                    <div className="pf-support-item-text">
-                      <h3>Application Version</h3>
-                      <p>You are using the latest version.</p>
-                    </div>
-                  </div>
-                  <span className="pf-version">Version 1.0.0</span>
-                </div>
-              </div>
-            </div>
-
           </div>
         </main>
       </div>

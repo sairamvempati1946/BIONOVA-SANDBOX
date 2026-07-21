@@ -1,5 +1,5 @@
 // src/pages/ProjectAccess.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Search, Folder, Users, Plus, X, Eye, Edit, Shield,
   UserPlus, UserMinus, ChevronDown, ChevronRight, FileText,
@@ -64,7 +64,239 @@ const PERMISSION_STATES = {
   RED: 'red'
 };
 
-// Static definitions removed since data is now fetched dynamically from the database.
+// ── STATIC PERMISSIONS ──
+const STATIC_PERMISSIONS = {
+  'admin-dashboard': { view: true, create: true, edit: true, delete: false },
+  'company-creation': { view: true, create: false, edit: false, delete: false },
+  'employee-creation': { view: true, create: false, edit: false, delete: false },
+  'project-creation': { view: true, create: true, edit: true, delete: false },
+  'task-board': { view: true, create: true, edit: true, delete: false },
+  'project-dashboard': { view: true, create: false, edit: false, delete: false },
+  'user-dashboard': { view: true, create: false, edit: false, delete: false },
+  'my-tasks': { view: true, create: false, edit: false, delete: false },
+  'assign-access': { view: false, create: false, edit: false, delete: false },
+  'profile': { view: true, create: false, edit: true, delete: false }
+};
+
+// ── PROJECTS DATA ──
+const PROJECTS = [
+  // ── Active Projects ──
+  {
+    id: 'PRJ-001',
+    name: 'CBG Plant Expansion - Phase 1',
+    code: 'PRJ-001',
+    description: 'Expansion of CBG plant with new equipment and facilities across 5 locations',
+    manager: 'Suresh Babu (EMP1009)',
+    department: 'Operations',
+    status: 'active',
+    progress: 65,
+    startDate: '2024-01-15',
+    endDate: '2024-12-31',
+    assignedEmployees: ['EMP1001', 'EMP1002', 'EMP1003', 'EMP1004', 'EMP1005', 'EMP1006', 'EMP1007', 'EMP1008', 'EMP1009'],
+    permissions: { ...STATIC_PERMISSIONS },
+    priority: 'high',
+    tasks: { total: 126, completed: 82 }
+  },
+  {
+    id: 'PRJ-002',
+    name: 'Digital Transformation - Phase 2',
+    code: 'PRJ-002',
+    description: 'Digital transformation initiative for improved operations and customer experience',
+    manager: 'Priya Sharma (EMP1010)',
+    department: 'IT',
+    status: 'active',
+    progress: 40,
+    startDate: '2024-03-01',
+    endDate: '2024-11-30',
+    assignedEmployees: ['EMP1010', 'EMP1011'],
+    permissions: {
+      'admin-dashboard': { view: true, create: false, edit: false, delete: false },
+      'project-creation': { view: true, create: true, edit: true, delete: false }
+    },
+    priority: 'medium',
+    tasks: { total: 84, completed: 34 }
+  },
+
+  // ── Upcoming Projects ──
+  {
+    id: 'PRJ-003',
+    name: 'Quality Management System Implementation',
+    code: 'PRJ-003',
+    description: 'Implementation of quality management system across all plants',
+    manager: 'Ananya I (EMP1007)',
+    department: 'Quality',
+    status: 'upcoming',
+    progress: 0,
+    startDate: '2024-07-01',
+    endDate: '2025-03-31',
+    assignedEmployees: ['EMP1007', 'EMP1008', 'EMP1009'],
+    permissions: {
+      'admin-dashboard': { view: true, create: false, edit: false, delete: false },
+      'project-creation': { view: true, create: false, edit: false, delete: false }
+    },
+    priority: 'low',
+    tasks: { total: 54, completed: 0 }
+  },
+  {
+    id: 'PRJ-004',
+    name: 'AI Chatbot Integration',
+    code: 'PRJ-004',
+    description: 'AI-powered chatbot for customer support automation',
+    manager: 'Priya Sharma (EMP1010)',
+    department: 'IT',
+    status: 'upcoming',
+    progress: 0,
+    startDate: '2024-08-01',
+    endDate: '2025-02-28',
+    assignedEmployees: ['EMP1010', 'EMP1011'],
+    permissions: {
+      'admin-dashboard': { view: true, create: false, edit: false, delete: false },
+      'project-creation': { view: true, create: false, edit: false, delete: false }
+    },
+    priority: 'medium',
+    tasks: { total: 42, completed: 0 }
+  },
+
+  // ── Completed Projects ──
+  {
+    id: 'PRJ-005',
+    name: 'Website Redesign & Rebranding',
+    code: 'PRJ-005',
+    description: 'Complete website redesign and corporate rebranding initiative',
+    manager: 'Emily Brown (EMP1012)',
+    department: 'Design',
+    status: 'completed',
+    progress: 100,
+    startDate: '2023-06-01',
+    endDate: '2023-12-31',
+    assignedEmployees: ['EMP1012', 'EMP1013', 'EMP1014'],
+    permissions: {
+      'admin-dashboard': { view: true, create: false, edit: false, delete: false },
+      'project-creation': { view: true, create: false, edit: false, delete: false }
+    },
+    priority: 'high',
+    tasks: { total: 68, completed: 68 }
+  },
+  {
+    id: 'PRJ-006',
+    name: 'Legacy Data Migration',
+    code: 'PRJ-006',
+    description: 'Migration of legacy data to new cloud platform',
+    manager: 'Mike Johnson (EMP1015)',
+    department: 'Data',
+    status: 'completed',
+    progress: 100,
+    startDate: '2023-09-01',
+    endDate: '2024-02-28',
+    assignedEmployees: ['EMP1015', 'EMP1016'],
+    permissions: {
+      'admin-dashboard': { view: true, create: false, edit: false, delete: false },
+      'project-creation': { view: true, create: false, edit: false, delete: false }
+    },
+    priority: 'medium',
+    tasks: { total: 52, completed: 52 }
+  },
+
+  // ── On-Hold Projects ──
+  {
+    id: 'PRJ-007',
+    name: 'Mobile App Development',
+    code: 'PRJ-007',
+    description: 'Cross-platform mobile application for field operations',
+    manager: 'Jane Smith (EMP1017)',
+    department: 'Development',
+    status: 'on-hold',
+    progress: 35,
+    startDate: '2024-02-01',
+    endDate: '2024-10-31',
+    assignedEmployees: ['EMP1017', 'EMP1018', 'EMP1019'],
+    permissions: {
+      'admin-dashboard': { view: true, create: false, edit: false, delete: false },
+      'project-creation': { view: true, create: false, edit: false, delete: false }
+    },
+    priority: 'high',
+    tasks: { total: 96, completed: 34 }
+  },
+  {
+    id: 'PRJ-008',
+    name: 'Supply Chain Optimization',
+    code: 'PRJ-008',
+    description: 'Optimization of supply chain with predictive analytics',
+    manager: 'Suresh Babu (EMP1009)',
+    department: 'Operations',
+    status: 'on-hold',
+    progress: 20,
+    startDate: '2024-04-01',
+    endDate: '2024-12-31',
+    assignedEmployees: ['EMP1009', 'EMP1001', 'EMP1002'],
+    permissions: {
+      'admin-dashboard': { view: true, create: false, edit: false, delete: false },
+      'project-creation': { view: true, create: false, edit: false, delete: false }
+    },
+    priority: 'low',
+    tasks: { total: 78, completed: 16 }
+  }
+];
+
+// ── EMPLOYEES ──
+const EMPLOYEES = [
+  { id: 'EMP1001', name: 'Saima V', designation: 'Site Engineer', department: 'Civil' },
+  { id: 'EMP1002', name: 'Ravi K', designation: 'Surveyor', department: 'Civil' },
+  { id: 'EMP1003', name: 'Priya S', designation: 'Design Engineer', department: 'Design' },
+  { id: 'EMP1004', name: 'Amit P', designation: 'Procurement Officer', department: 'Procurement' },
+  { id: 'EMP1005', name: 'Sneha R', designation: 'Materials Engineer', department: 'Procurement' },
+  { id: 'EMP1006', name: 'Vikram S', designation: 'Civil Engineer', department: 'Civil' },
+  { id: 'EMP1007', name: 'Ananya I', designation: 'Structural Engineer', department: 'Civil' },
+  { id: 'EMP1008', name: 'Kiran R', designation: 'Mechanical Engineer', department: 'Mechanical' },
+  { id: 'EMP1009', name: 'Suresh Babu', designation: 'Project Manager', department: 'Operations' },
+  { id: 'EMP1010', name: 'Priya Sharma', designation: 'IT Manager', department: 'IT' },
+  { id: 'EMP1011', name: 'Rahul K', designation: 'Developer', department: 'IT' },
+  { id: 'EMP1012', name: 'Emily Brown', designation: 'Design Lead', department: 'Design' },
+  { id: 'EMP1013', name: 'Sarah Wilson', designation: 'UI/UX Designer', department: 'Design' },
+  { id: 'EMP1014', name: 'Alex Turner', designation: 'Frontend Developer', department: 'Design' },
+  { id: 'EMP1015', name: 'Mike Johnson', designation: 'Data Architect', department: 'Data' },
+  { id: 'EMP1016', name: 'Lisa Park', designation: 'Data Engineer', department: 'Data' },
+  { id: 'EMP1017', name: 'Jane Smith', designation: 'Mobile Developer', department: 'Development' },
+  { id: 'EMP1018', name: 'Tom Harris', designation: 'Backend Developer', department: 'Development' },
+  { id: 'EMP1019', name: 'Nina Gupta', designation: 'DevOps Engineer', department: 'Development' }
+];
+
+// ── MILESTONES WITH TASKS ──
+const MILESTONES = [
+  {
+    id: 'M-001',
+    name: 'Site Preparation',
+    tasks: [
+      { id: 'T-001', name: 'Soil Investigation', assignee: 'Saima V (EMP1001)', reviewer: 'Vikram S (EMP1006)', approver: 'Suresh Babu (EMP1009)', status: 'In Progress' },
+      { id: 'T-002', name: 'Site Survey', assignee: 'Ravi K (EMP1002)', status: 'Completed' },
+      { id: 'T-003', name: 'Concept Review', assignee: 'Priya S (EMP1003)', reviewer: 'Kiran R (EMP1008)', status: 'Pending' }
+    ]
+  },
+  {
+    id: 'M-002',
+    name: 'Procurement',
+    tasks: [
+      { id: 'T-015', name: 'Vendor Evaluation', assignee: 'Amit P (EMP1004)', reviewer: 'Priya S (EMP1003)', approver: 'Suresh Babu (EMP1009)', status: 'In Progress' },
+      { id: 'T-016', name: 'Material Takeoff', assignee: 'Sneha R (EMP1005)', status: 'Pending' }
+    ]
+  },
+  {
+    id: 'M-003',
+    name: 'Civil Construction',
+    tasks: [
+      { id: 'T-021', name: 'Foundation Work', assignee: 'Vikram S (EMP1006)', status: 'Completed' },
+      { id: 'T-022', name: 'Rebar Installation', assignee: 'Ananya I (EMP1007)', reviewer: 'Vikram S (EMP1006)', approver: 'Suresh Babu (EMP1009)', status: 'In Progress' }
+    ]
+  },
+  {
+    id: 'M-004',
+    name: 'Equipment Installation',
+    tasks: [
+      { id: 'T-029', name: 'Equipment Installation', assignee: 'Kiran R (EMP1008)', reviewer: 'Deepak G (EMP1009)', status: 'Pending' },
+      { id: 'T-033', name: 'System Testing', assignee: 'Deepak G (EMP1009)', approver: 'Suresh Babu (EMP1009)', status: 'In Progress' }
+    ]
+  }
+];
 
 // ── Helper Functions ──
 const getStatusColor = (status) => {
@@ -126,31 +358,6 @@ const getPriorityIcon = (priority) => {
   }
 };
 
-const normalizeProject = (proj) => {
-  if (!proj) return proj;
-  let normalizedStatus = proj.status ? proj.status.toLowerCase() : '';
-  if (normalizedStatus === 'live') {
-    normalizedStatus = 'active';
-  } else if (normalizedStatus === 'closed') {
-    normalizedStatus = 'completed';
-  }
-  return {
-    ...proj,
-    status: normalizedStatus
-  };
-};
-
-// ── API Configuration ──
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-
-const getAuthHeaders = () => {
-  const token = sessionStorage.getItem("authToken") || localStorage.getItem("authToken");
-  return {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${token || ""}`
-  };
-};
-
 // ── Main Component ──
 const ProjectAccess = ({ userRole, onLogout }) => {
   // ── State ──
@@ -159,14 +366,11 @@ const ProjectAccess = ({ userRole, onLogout }) => {
   const [viewMode, setViewMode] = useState('permission');
   const [searchTerm, setSearchTerm] = useState('');
   const [showEditPermissions, setShowEditPermissions] = useState(false);
-  const [expandedMilestones, setExpandedMilestones] = useState(new Set());
+  const [expandedMilestones, setExpandedMilestones] = useState(new Set(['M-001']));
   const [expandedGroups, setExpandedGroups] = useState({});
   const [expandedProjectGroups, setExpandedProjectGroups] = useState({});
   const [accessGroups, setAccessGroups] = useState([]);
-  const [savedAccessGroups, setSavedAccessGroups] = useState([]);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
-  const [projectAccess, setProjectAccess] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [alertConfig, setAlertConfig] = useState({ 
     isOpen: false, 
     type: 'info', 
@@ -184,70 +388,10 @@ const ProjectAccess = ({ userRole, onLogout }) => {
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState('');
 
-  // ── Task Assign Modal State ──
-  const [showTaskAssignModal, setShowTaskAssignModal] = useState(false);
-  const [taskAssignTarget, setTaskAssignTarget] = useState(null); // { task, role }
-  const [taskAssignSearchTerm, setTaskAssignSearchTerm] = useState('');
-
-  // ── Dynamic Data States ──
-  const [projects, setProjects] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [milestones, setMilestones] = useState([]);
-
-  // Fetch initial projects and employees lists
-  const fetchInitialData = async () => {
-    setLoading(true);
-    try {
-      const prjResponse = await fetch(`${apiBaseUrl}/api/projects/access`, {
-        headers: getAuthHeaders()
-      });
-      if (prjResponse.ok) {
-        const prjData = await prjResponse.json();
-        const normalized = prjData.map(normalizeProject);
-        setProjects(normalized);
-      }
-
-      const empResponse = await fetch(`${apiBaseUrl}/api/employees`, {
-        headers: getAuthHeaders()
-      });
-      if (empResponse.ok) {
-        const empData = await empResponse.json();
-        const formattedEmps = empData.map(emp => ({
-          id: emp.empId?.toString() || emp.id?.toString(),
-          code: emp.empCode || '',
-          name: `${emp.fstNm || emp.firstName || ''} ${emp.lstNm || emp.lastName || ''}`.trim(),
-          designation: emp.designation || 'Staff',
-          department: emp.department || 'Operations'
-        }));
-        setEmployees(formattedEmps);
-      }
-    } catch (err) {
-      console.error('Error fetching initial data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
-  const refreshProjectAccess = async () => {
-    if (!selectedProject) return;
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/projects/${selectedProject.id || selectedProject.prjId}/access`, {
-        headers: getAuthHeaders()
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedProject(normalizeProject(data.project));
-        setProjectAccess(data.accesses || []);
-        setSelectedEmployees(data.assignedEmployees || []);
-      }
-    } catch (err) {
-      console.error('Error refreshing project access:', err);
-    }
-  };
+  // ── Data ──
+  const [projects] = useState(PROJECTS);
+  const [employees] = useState(EMPLOYEES);
+  const [milestones, setMilestones] = useState(MILESTONES);
 
   // ── Alert ──
   const showAlert = (type, title, message, onConfirm = null, confirmText = 'OK', cancelText = 'Cancel') => {
@@ -288,7 +432,6 @@ const ProjectAccess = ({ userRole, onLogout }) => {
         badgeText: 'No Access'
       }));
       setAccessGroups(emptyGroups);
-      setSavedAccessGroups(JSON.parse(JSON.stringify(emptyGroups)));
       return;
     }
 
@@ -324,54 +467,24 @@ const ProjectAccess = ({ userRole, onLogout }) => {
     });
     
     setAccessGroups(groups);
-    setSavedAccessGroups(JSON.parse(JSON.stringify(groups)));
     setExpandedGroups({});
   };
 
   // ── Open/Close Project ──
-  const openProjectDetail = async (project) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/projects/${project.id || project.prjId}/access`, {
-        headers: getAuthHeaders()
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const normalized = normalizeProject(data.project);
-        setSelectedProject(normalized);
-        setProjectAccess(data.accesses || []);
-        setSelectedEmployees(data.assignedEmployees || []);
-
-        const msResponse = await fetch(`${apiBaseUrl}/api/projects/${project.id || project.prjId}/milestones-with-tasks`, {
-          headers: getAuthHeaders()
-        });
-        if (msResponse.ok) {
-          const msData = await msResponse.json();
-          setMilestones(msData);
-          if (msData.length > 0) {
-            setExpandedMilestones(new Set([msData[0].id]));
-          }
-        }
-        
-        initializeAccessGroups(normalized);
-        setCurrentView('project-detail');
-        setShowEditPermissions(false);
-      }
-    } catch (err) {
-      console.error('Error fetching project access details:', err);
-    } finally {
-      setLoading(false);
-    }
+  const openProjectDetail = (project) => {
+    setSelectedProject(project);
+    setSelectedEmployees(project.assignedEmployees || []);
+    initializeAccessGroups(project);
+    setCurrentView('project-detail');
+    setShowEditPermissions(false);
   };
 
   const closeProjectDetail = () => {
     setSelectedProject(null);
     setSelectedEmployees([]);
     setAccessGroups([]);
-    setProjectAccess([]);
     setCurrentView('projects');
     setShowEditPermissions(false);
-    fetchInitialData();
   };
 
   // ── Toggle Functions ──
@@ -412,7 +525,7 @@ const ProjectAccess = ({ userRole, onLogout }) => {
     
     let newState;
     if (currentState === PERMISSION_STATES.EMPTY) newState = PERMISSION_STATES.GREEN;
-    else if (currentState === PERMISSION_STATES.GREEN) newState = PERMISSION_STATES.RED;
+    else if (currentState === PERMISSION_STATES.GREEN) newState = PERMISSION_STATES.EMPTY;
     else if (currentState === PERMISSION_STATES.BLUE) newState = PERMISSION_STATES.RED;
     else if (currentState === PERMISSION_STATES.RED) newState = PERMISSION_STATES.EMPTY;
     else newState = PERMISSION_STATES.EMPTY;
@@ -536,9 +649,9 @@ const ProjectAccess = ({ userRole, onLogout }) => {
 
   // ── Filters ──
   const filteredProjects = (() => {
-    if (!searchTerm) return projects;
+    if (!searchTerm) return PROJECTS;
     const search = searchTerm.toLowerCase();
-    return projects.filter(p => 
+    return PROJECTS.filter(p => 
       p.name?.toLowerCase().includes(search) ||
       p.code?.toLowerCase().includes(search) ||
       p.manager?.toLowerCase().includes(search) ||
@@ -565,13 +678,9 @@ const ProjectAccess = ({ userRole, onLogout }) => {
   // Get Employee Tasks
   const getEmployeeTasks = (empId) => {
     const assignedTasks = [];
-    const emp = employees.find(e => e.id === empId);
-    if (!emp) return assignedTasks;
-    const codeMatch = emp.code ? `(${emp.code})` : `(EMP${emp.id})`;
-
     milestones.forEach(milestone => {
       milestone.tasks.forEach(task => {
-        if (task.assignee && task.assignee.includes(codeMatch)) {
+        if (task.assignee && task.assignee.includes(empId)) {
           assignedTasks.push({
             ...task,
             milestoneId: milestone.id,
@@ -579,7 +688,7 @@ const ProjectAccess = ({ userRole, onLogout }) => {
             role: 'Assignee'
           });
         }
-        if (task.reviewer && task.reviewer.includes(codeMatch)) {
+        if (task.reviewer && task.reviewer.includes(empId)) {
           assignedTasks.push({
             ...task,
             milestoneId: milestone.id,
@@ -587,7 +696,7 @@ const ProjectAccess = ({ userRole, onLogout }) => {
             role: 'Reviewer'
           });
         }
-        if (task.approver && task.approver.includes(codeMatch)) {
+        if (task.approver && task.approver.includes(empId)) {
           assignedTasks.push({
             ...task,
             milestoneId: milestone.id,
@@ -602,16 +711,12 @@ const ProjectAccess = ({ userRole, onLogout }) => {
 
   // Get Employee Task Count
   const getEmployeeTaskCount = (empId) => {
-    const emp = employees.find(e => e.id === empId);
-    if (!emp) return 0;
-    const codeMatch = emp.code ? `(${emp.code})` : `(EMP${emp.id})`;
-
     let count = 0;
     milestones.forEach(milestone => {
       milestone.tasks.forEach(task => {
-        if (task.assignee && task.assignee.includes(codeMatch)) count++;
-        if (task.reviewer && task.reviewer.includes(codeMatch)) count++;
-        if (task.approver && task.approver.includes(codeMatch)) count++;
+        if (task.assignee && task.assignee.includes(empId)) count++;
+        if (task.reviewer && task.reviewer.includes(empId)) count++;
+        if (task.approver && task.approver.includes(empId)) count++;
       });
     });
     return count;
@@ -623,7 +728,7 @@ const ProjectAccess = ({ userRole, onLogout }) => {
     
     if (employeeTasks.length > 0) {
       const taskList = employeeTasks.map(t => 
-        `• ${t.code || t.id} - ${t.name} (${t.milestoneName}) [${t.role}]`
+        `• ${t.id} - ${t.name} (${t.milestoneName}) [${t.role}]`
       ).join('\n');
       
       showAlert(
@@ -640,67 +745,49 @@ const ProjectAccess = ({ userRole, onLogout }) => {
   };
 
   // Confirm Remove Employee
-  const confirmRemoveEmployee = async (empId, employeeTasks) => {
-    const name = employees.find(e => e.id === empId)?.name || 'Employee';
-    const currentUser = sessionStorage.getItem("userName") || "System User";
+  const confirmRemoveEmployee = (empId, employeeTasks) => {
+    setSelectedEmployees(prev => prev.filter(id => id !== empId));
     
-    setLoading(true);
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/projects/${selectedProject.id || selectedProject.prjId}/access/${empId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          performedBy: currentUser,
-          remarks: 'Revoked via Project Access Control'
+    if (employeeTasks.length > 0) {
+      const updatedMilestones = milestones.map(milestone => ({
+        ...milestone,
+        tasks: milestone.tasks.map(task => {
+          let updatedTask = { ...task };
+          if (task.assignee && task.assignee.includes(empId)) {
+            updatedTask.assignee = 'Unassigned';
+          }
+          if (task.reviewer && task.reviewer.includes(empId)) {
+            updatedTask.reviewer = 'Unassigned';
+          }
+          if (task.approver && task.approver.includes(empId)) {
+            updatedTask.approver = 'Unassigned';
+          }
+          if (updatedTask.assignee === 'Unassigned' || 
+              updatedTask.reviewer === 'Unassigned' || 
+              updatedTask.approver === 'Unassigned') {
+            updatedTask.status = 'Pending';
+          }
+          return updatedTask;
         })
-      });
+      }));
+      setMilestones(updatedMilestones);
       
-      if (response.ok) {
-        await refreshProjectAccess();
-        showAlert('success', 'Employee Removed', `${name} has been removed from the project.`);
-      } else {
-        const errData = await response.json();
-        showAlert('error', 'Error', errData.error || 'Failed to remove employee.');
-      }
-    } catch (err) {
-      console.error('Error removing employee:', err);
-      showAlert('error', 'Error', 'Failed to connect to backend.');
-    } finally {
-      setLoading(false);
+      showAlert('info', 'Tasks Unassigned', 
+        `${employeeTasks.length} task(s) have been unassigned and marked as "Pending".`
+      );
+    } else {
+      showAlert('success', 'Employee Removed', 'Employee has been removed from the project.');
     }
   };
 
-  const handleAddEmployee = async (empId) => {
-    const name = employees.find(e => e.id === empId)?.name || 'Employee';
-    const currentUser = sessionStorage.getItem("userName") || "System User";
-    
-    setLoading(true);
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/projects/${selectedProject.id || selectedProject.prjId}/access/bulk`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          employeeIds: [empId],
-          accessType: 'VIEWER',
-          performedBy: currentUser,
-          remarks: 'Added via Project Access Control'
-        })
-      });
-      
-      if (response.ok) {
-        await refreshProjectAccess();
-        showAlert('success', 'Employee Added', `${name} has been added to the project.`);
-        setShowAddEmployeeModal(false);
-        setEmployeeSearchTerm('');
-      } else {
-        const errData = await response.json();
-        showAlert('error', 'Error', errData.error || 'Failed to add employee.');
-      }
-    } catch (err) {
-      console.error('Error adding employee:', err);
-      showAlert('error', 'Error', 'Failed to connect to backend.');
-    } finally {
-      setLoading(false);
+  const handleAddEmployee = (empId) => {
+    if (!selectedEmployees.includes(empId)) {
+      setSelectedEmployees(prev => [...prev, empId]);
+      showAlert('success', 'Employee Added', 'Employee has been added to the project.');
+      setShowAddEmployeeModal(false);
+      setEmployeeSearchTerm('');
+    } else {
+      showAlert('warning', 'Already Added', 'This employee is already in the project.');
     }
   };
 
@@ -1060,43 +1147,16 @@ const ProjectAccess = ({ userRole, onLogout }) => {
       return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     };
 
-    const renderPerson = (name, type, task) => {
-      if (!name || name === 'Unassigned' || name === '—') {
-        return (
-          <button 
-            className="pac-btn-outline-sm"
-            style={{ fontSize: '11px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#f8fafc', border: '1px dashed #cbd5e1', color: '#64748b', cursor: 'pointer' }}
-            onClick={(e) => {
-              e.stopPropagation();
-              setTaskAssignTarget({ task, role: type });
-              setShowTaskAssignModal(true);
-            }}
-            title={`Assign ${type}`}
-          >
-            <UserPlus size={12} /> Add
-          </button>
-        );
+    const renderPerson = (name, type) => {
+      if (!name) {
+        return <span className="pac-person-unassigned">—</span>;
       }
       const color = getAvatarColor(name);
       const initials = getInitials(name);
       return (
-        <div 
-          className="pac-person"
-          onClick={(e) => {
-            if (showEditPermissions) {
-              e.stopPropagation();
-              setTaskAssignTarget({ task, role: type });
-              setShowTaskAssignModal(true);
-            }
-          }}
-          style={{ cursor: showEditPermissions ? 'pointer' : 'default' }}
-          title={showEditPermissions ? `Change ${type}` : undefined}
-        >
+        <div className="pac-person">
           <span className="pac-person-avatar" style={{ background: color }}>{initials}</span>
-          <span className="pac-person-name" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            {name}
-            {showEditPermissions && <Pencil size={10} style={{ color: '#64748b', marginLeft: '4px' }} />}
-          </span>
+          <span className="pac-person-name">{name}</span>
         </div>
       );
     };
@@ -1108,7 +1168,15 @@ const ProjectAccess = ({ userRole, onLogout }) => {
           <span className="pac-legend-item"><span className="pac-dot pac-dot-green"></span> Added</span>
           <span className="pac-legend-item"><span className="pac-dot pac-dot-red"></span> Revoked</span>
           <span className="pac-legend-item"><span className="pac-dot pac-dot-empty"></span> No Access</span>
-
+          <span className="pac-legend-item">
+            <User size={14} className="pac-legend-icon" /> Assignee
+          </span>
+          <span className="pac-legend-item">
+            <UserCog size={14} className="pac-legend-icon" /> Reviewer
+          </span>
+          <span className="pac-legend-item">
+            <UserApprover size={14} className="pac-legend-icon" /> Approver
+          </span>
           {showEditPermissions && <span className="pac-edit-indicator"><AlertCircle size={14} /> Click to toggle</span>}
           {!showEditPermissions && <span className="pac-view-indicator"><Eye size={14} /> View mode</span>}
         </div>
@@ -1154,9 +1222,9 @@ const ProjectAccess = ({ userRole, onLogout }) => {
                         <tr key={task.id} className="pac-task-row">
                           <td><span className="pac-task-code">{task.id}</span></td>
                           <td>{task.name}</td>
-                          <td>{renderPerson(task.assignee, 'assignee', task)}</td>
-                          <td>{renderPerson(hasReviewer ? task.reviewer : null, 'reviewer', task)}</td>
-                          <td>{renderPerson(hasApprover ? task.approver : null, 'approver', task)}</td>
+                          <td>{renderPerson(task.assignee, 'assignee')}</td>
+                          <td>{hasReviewer ? renderPerson(task.reviewer, 'reviewer') : <span className="pac-person-unassigned">—</span>}</td>
+                          <td>{hasApprover ? renderPerson(task.approver, 'approver') : <span className="pac-person-unassigned">—</span>}</td>
                           <td><span className={`pac-status-badge pac-status-${getStatusColor(task.status)}`}>{task.status}</span></td>
                           <td style={{ textAlign: 'center' }}>{renderTaskCheckbox(task.id, 'view')}</td>
                           <td style={{ textAlign: 'center' }}>{renderTaskCheckbox(task.id, 'create')}</td>
@@ -1204,19 +1272,6 @@ const ProjectAccess = ({ userRole, onLogout }) => {
           {projectEmployees.map(emp => {
             const taskCount = getEmployeeTaskCount(emp.id);
             
-            // Calculate aggregate permissions from savedAccessGroups
-            let perms = { view: false, create: false, edit: false, delete: false };
-            if (savedAccessGroups) {
-              savedAccessGroups.forEach(group => {
-                group.screens.forEach(s => {
-                  if (s.view === 'blue' || s.view === 'green') perms.view = true;
-                  if (s.create === 'blue' || s.create === 'green') perms.create = true;
-                  if (s.edit === 'blue' || s.edit === 'green') perms.edit = true;
-                  if (s.delete === 'blue' || s.delete === 'green') perms.delete = true;
-                });
-              });
-            }
-            
             return (
               <div key={emp.id} className="pac-employee-card-enhanced">
                 <div className="pac-emp-card-header">
@@ -1254,13 +1309,8 @@ const ProjectAccess = ({ userRole, onLogout }) => {
                       <Shield size={14} /> <span>Access Permissions</span>
                     </div>
                     <div className="pac-emp-perms-badges">
-                      {perms.view && <span className="pac-emp-perm-badge view"><Eye size={12} /> View</span>}
-                      {perms.create && <span className="pac-emp-perm-badge create" style={{background:'#dcfce7', color:'#166534'}}><Plus size={12} /> Create</span>}
-                      {perms.edit && <span className="pac-emp-perm-badge edit"><Edit size={12} /> Edit</span>}
-                      {perms.delete && <span className="pac-emp-perm-badge delete" style={{background:'#fee2e2', color:'#991b1b'}}><Trash2 size={12} /> Delete</span>}
-                      {!perms.view && !perms.create && !perms.edit && !perms.delete && (
-                        <span className="pac-emp-perm-badge" style={{background:'#f1f5f9', color:'#64748b'}}>No Access</span>
-                      )}
+                      <span className="pac-emp-perm-badge view"><Eye size={12} /> View</span>
+                      <span className="pac-emp-perm-badge edit"><Edit size={12} /> Edit</span>
                     </div>
                   </div>
                 </div>
@@ -1776,167 +1826,6 @@ const ProjectAccess = ({ userRole, onLogout }) => {
     );
   };
 
-  // ── RENDER: Task Assign Modal ──
-  const renderTaskAssignModal = () => {
-    if (!showTaskAssignModal || !taskAssignTarget) return null;
-
-    const projectEmployees = employees.filter(e => selectedEmployees?.includes(e.id));
-    const availableEmployees = projectEmployees.length > 0 ? projectEmployees : employees;
-
-    const filtered = availableEmployees.filter(emp => {
-      // Exclude employee if they are already assigned to another role (e.g. assignee, reviewer, approver) on the same task
-      const task = taskAssignTarget.task;
-      const currentRole = taskAssignTarget.role;
-      const rolesToCheck = ['assignee', 'reviewer', 'approver'].filter(r => r !== currentRole);
-
-      const isAssignedToOtherRole = rolesToCheck.some(r => {
-        const val = task[r];
-        if (!val || val === '—' || val === 'Unassigned') return false;
-        
-        // Match by employee code (e.g., "EMP1012") or employee ID
-        const codeMatch = emp.code ? `(${emp.code})` : `(EMP${emp.id})`;
-        if (val.includes(codeMatch)) return true;
-
-        // Fallback name comparison
-        const namePart = val.split(' (')[0].trim();
-        return namePart.toLowerCase() === emp.name.toLowerCase();
-      });
-
-      if (isAssignedToOtherRole) return false;
-
-      return emp.name.toLowerCase().includes(taskAssignSearchTerm.toLowerCase()) ||
-        emp.id.toLowerCase().includes(taskAssignSearchTerm.toLowerCase()) ||
-        emp.designation.toLowerCase().includes(taskAssignSearchTerm.toLowerCase());
-    });
-
-    const handleAssign = async (empId) => {
-      const emp = employees.find(e => e.id === empId);
-      setLoading(true);
-      try {
-        // Optimistically update the UI to show the new assignment
-        const newMilestones = milestones.map(m => {
-          return {
-            ...m,
-            tasks: m.tasks.map(t => {
-              if (t.id === taskAssignTarget.task.id) {
-                const newName = `${emp.name} (${emp.code || `EMP${emp.id}`})`;
-                return {
-                  ...t,
-                  [taskAssignTarget.role]: newName
-                };
-              }
-              return t;
-            })
-          };
-        });
-        setMilestones(newMilestones);
-        
-        showAlert('success', 'Assigned', `${emp.name} has been assigned as ${taskAssignTarget.role} for task ${taskAssignTarget.task.id}.`);
-        setShowTaskAssignModal(false);
-        setTaskAssignSearchTerm('');
-      } catch (err) {
-        showAlert('error', 'Error', 'Failed to assign employee.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    return (
-      <div className="pac-popup-overlay" onClick={() => { setShowTaskAssignModal(false); setTaskAssignSearchTerm(''); }}>
-        <div className="pac-popup-container" onClick={(e) => e.stopPropagation()}>
-          <div className="pac-popup-window">
-            <div className="pac-popup-header">
-              <div className="pac-popup-header-left">
-                <div className="pac-popup-icon-box">
-                  <UserPlus size={22} />
-                </div>
-                <div>
-                  <h3 className="pac-popup-title" style={{ textTransform: 'capitalize' }}>Assign {taskAssignTarget.role}</h3>
-                  <p className="pac-popup-subtitle">
-                    Select a team member for <strong>{taskAssignTarget.task.name}</strong>
-                  </p>
-                </div>
-              </div>
-              <button className="pac-popup-close" onClick={() => { setShowTaskAssignModal(false); setTaskAssignSearchTerm(''); }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="pac-popup-body">
-              <div className="pac-popup-search">
-                <div className="pac-popup-search-box">
-                  <Search size={18} className="pac-popup-search-icon" />
-                  <input 
-                    type="text" 
-                    placeholder="Search team members..." 
-                    value={taskAssignSearchTerm}
-                    onChange={(e) => setTaskAssignSearchTerm(e.target.value)}
-                    className="pac-popup-search-input"
-                    autoFocus
-                  />
-                  {taskAssignSearchTerm && (
-                    <button className="pac-popup-search-clear" onClick={() => setTaskAssignSearchTerm('')}>
-                      <X size={16} />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="pac-popup-list-wrapper">
-                {filtered.length === 0 ? (
-                  <div className="pac-popup-empty">
-                    <div className="pac-popup-empty-icon">👥</div>
-                    <h4>No Members Found</h4>
-                  </div>
-                ) : (
-                  <div className="pac-popup-list">
-                    {filtered.map((emp) => {
-                      const getInitials = (name) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-                      const getAvatarColor = (name) => {
-                        const colors = ['#2563eb', '#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-                        let hash = 0;
-                        for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-                        return colors[Math.abs(hash) % colors.length];
-                      };
-
-                      return (
-                        <div key={emp.id} className="pac-popup-item" onClick={() => handleAssign(emp.id)} style={{ cursor: 'pointer' }}>
-                          <div className="pac-popup-item-avatar" style={{ background: getAvatarColor(emp.name) }}>
-                            {getInitials(emp.name)}
-                          </div>
-                          <div className="pac-popup-item-info">
-                            <div className="pac-popup-item-name">{emp.name}</div>
-                            <div className="pac-popup-item-details">
-                              <span className="pac-popup-item-id">{emp.id}</span>
-                              <span className="pac-popup-item-role">{emp.designation}</span>
-                            </div>
-                          </div>
-                          <button className="pac-popup-item-add"><Plus size={16} /> Assign</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div className="pac-popup-footer">
-              <span className="pac-popup-footer-info">
-                {filtered.length} member(s) available
-              </span>
-              <button 
-                className="pac-popup-footer-cancel"
-                onClick={() => { setShowTaskAssignModal(false); setTaskAssignSearchTerm(''); }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // ── RENDER: Project Detail ──
   const renderProjectDetailView = () => {
     if (!selectedProject) return null;
@@ -1955,21 +1844,17 @@ const ProjectAccess = ({ userRole, onLogout }) => {
             </span>
           </div>
           <div className="pac-detail-actions">
-            {!showEditPermissions ? (
-              <button 
-                className="pac-btn-primary"
-                onClick={() => setShowEditPermissions(true)}
-              >
-                <Pencil size={16} /> Edit Permissions
-              </button>
-            ) : (
+            <button 
+              className={`pac-btn-${showEditPermissions ? 'success' : 'primary'}`}
+              onClick={() => setShowEditPermissions(!showEditPermissions)}
+            >
+              {showEditPermissions ? <Check size={16} /> : <Pencil size={16} />}
+              {showEditPermissions ? ' Done' : ' Edit Permissions'}
+            </button>
+            {showEditPermissions && (
               <button 
                 className="pac-btn-primary" 
-                onClick={() => {
-                  setSavedAccessGroups(JSON.parse(JSON.stringify(accessGroups)));
-                  showAlert('success', 'Saved', 'Permissions saved successfully!');
-                  setShowEditPermissions(false);
-                }}
+                onClick={() => showAlert('success', 'Saved', 'Permissions saved successfully!')}
               >
                 <Save size={16} /> Save Changes
               </button>
@@ -2040,24 +1925,13 @@ const ProjectAccess = ({ userRole, onLogout }) => {
         />
         <main className="cc-main">
           <div className="pac-container">
-            {loading ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '350px', color: '#64748b' }}>
-                <div style={{ width: '40px', height: '40px', border: '4px solid #cbd5e1', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '12px' }}></div>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                <p style={{ fontWeight: '500' }}>Loading project data...</p>
-              </div>
-            ) : (
-              currentView === 'projects' ? renderProjectsView() : renderProjectDetailView()
-            )}
+            {currentView === 'projects' ? renderProjectsView() : renderProjectDetailView()}
           </div>
         </main>
       </div>
 
       {/* Add Employee Modal */}
       {renderAddEmployeeModal()}
-      
-      {/* Task Assign Modal */}
-      {renderTaskAssignModal()}
 
       {/* Alert Modal */}
       <AlertModal

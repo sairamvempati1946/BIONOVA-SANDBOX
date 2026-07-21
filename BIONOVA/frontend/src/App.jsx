@@ -14,7 +14,6 @@ import AgriLandAllocation from "./components/Admin/LandMaster";
 import DepartmentMapping from "./components/Admin/DepartmentMapping";
 import Projects from "./components/User/Projects";
 import Calendar from "./components/User/Calendar";
-import UserTaskBoard from "./components/User/UserTaskBoard";
 import ProjectCreation from "./components/Projectmanager/ProjectCreation";
 import MilestoneCreation from "./components/Projectmanager/MilestoneCreation";
 import EmployeeCreation from "./components/Projectmanager/EmployeeMaster";
@@ -29,7 +28,6 @@ import AssignAccess from "./components/Projectmanager/AssignAccess";
 import ProjectAccess from "./components/Projectmanager/ProjectAccess";
 import Assignment from "./components/Assignment";
 import ResetPassword from "./components/ResetPassword";
-import AllProjectGanttChart from "./components/Projectmanager/AllProjectGanttChart";
 
 const AppContent = () => {
   const navigate = useNavigate();
@@ -45,28 +43,16 @@ const AppContent = () => {
     setLoading(false);
   }, []);
 
-  const getDashboardRoute = (role) => {
-    const lowerRole = role?.toLowerCase() || '';
-    if (lowerRole === 'admin' || lowerRole === 'full_access') {
-      return '/dashboard';
-    } else if (lowerRole === 'project_manager' || lowerRole === 'pm' || lowerRole === 'manager') {
-      return '/pm-dashboard';
-    } else {
-      return '/user-dashboard';
-    }
-  };
-
   const handleLogin = (status, role) => {
     setIsLoggedIn(status);
     setUserRole(role);
-    navigate(getDashboardRoute(role), { replace: true });
+    navigate("/dashboard", { replace: true });
   };
 
   const handleLogout = () => {
     localStorage.clear();
     sessionStorage.clear();
     setIsLoggedIn(false);
-    setUserRole("user");
     navigate("/", { replace: true });
   };
 
@@ -74,7 +60,7 @@ const AppContent = () => {
 
   return (
     <Routes>
-      <Route path="/" element={!isLoggedIn ? <Login onLogin={handleLogin} /> : <Navigate to={getDashboardRoute(userRole)} replace />} />
+      <Route path="/" element={!isLoggedIn ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" replace />} />
 
       {/* Dashboards */}
       <Route path="/dashboard" element={isLoggedIn ? <AdminDashboard userRole={userRole} onLogout={handleLogout} /> : <Navigate to="/" replace />} />
@@ -98,8 +84,6 @@ const AppContent = () => {
       <Route path="/milestone-creation" element={isLoggedIn ? <MilestoneCreation userRole={userRole} onLogout={handleLogout} /> : <Navigate to="/" replace />} />
       <Route path="/task-board" element={isLoggedIn ? <TaskBoard userRole={userRole} onLogout={handleLogout} /> : <Navigate to="/" replace />} />
       <Route path="/my-tasks" element={isLoggedIn ? <MyTasks userRole={userRole} onLogout={handleLogout} /> : <Navigate to="/" replace />} />
-      <Route path="/user-task-board" element={isLoggedIn ? <UserTaskBoard userRole={userRole} onLogout={handleLogout} /> : <Navigate to="/" replace />} />
-      <Route path="/all-project-gantt-chart" element={isLoggedIn ? <AllProjectGanttChart userRole={userRole} onLogout={handleLogout} /> : <Navigate to="/" replace />} />
       <Route path="/employee-creation" element={isLoggedIn ? <EmployeeCreation userRole={userRole} onLogout={handleLogout} /> : <Navigate to="/" replace />} />
       <Route path="/department-creation" element={isLoggedIn ? <DepartmentCreation userRole={userRole} onLogout={handleLogout} /> : <Navigate to="/" replace />} />
       <Route path="/profile" element={isLoggedIn ? <Profile userRole={userRole} onLogout={handleLogout} /> : <Navigate to="/" replace />} />

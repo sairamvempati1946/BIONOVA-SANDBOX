@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, Edit3, X, Star } from 'lucide-react';
-import Sidebar from '../Sidebar';
-import Header from '../Header';
-import ProjectOverview from './ProjectOverview';
-import ProjectMilestonesTab from './ProjectMilestonesTab';
-import ProjectGanttChart from './ProjectGanttChart';
-import ProjectForecasting from './ProjectForecasting';
-import ProjectChangeLogs from './ProjectChangeLogs';
-import DocsAndReports from '../Projectmanager/DocsAndReports';
+import Sidebar from '../Sidebar.jsx';
+import Header from '../Header.jsx';
+import ProjectOverview from './ProjectOverview.jsx';
+import ProjectMilestonesTab from './ProjectMilestonesTab.jsx';
+import ProjectGanttChart from './ProjectGanttChart.jsx';
+import ProjectForecasting from './ProjectForecasting.jsx';
+import ProjectChangeLogs from './ProjectChangeLogs.jsx';
+import DocsAndReports from '../Projectmanager/DocsAndReports.jsx';
 import '../../styles/project-details.css';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
@@ -28,15 +28,56 @@ const getLoggedInUser = () => {
   return "Admin";
 };
 
+const formatDateToDDMMYYYY = (dateStr) => {
+  if (!dateStr || dateStr === "N/A" || dateStr === "Not Specified") return "Not Specified";
+  const parts = dateStr.split('-');
+  if (parts.length >= 3 && parts[0].length === 4) {
+    return `${parts[2].substring(0, 2)}/${parts[1]}/${parts[0]}`;
+  }
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) {
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  }
+  return dateStr;
+};
+
+const extractProgress = (obj) => {
+  if (!obj) return 0;
+  if (obj.status && obj.status.toUpperCase() === 'COMPLETED') return 100;
+  const knownKeys = ['progress', 'completionPercentage', 'completion', 'percentage', 'progressPercent', 'percentComplete', 'completionPercent', 'projectProgress', 'progressValue', 'pctComplete'];
+  for (const key of knownKeys) {
+    if (obj[key] !== undefined && obj[key] !== null) {
+      let val = obj[key];
+      if (typeof val === 'string') val = parseFloat(val.replace('%', ''));
+      if (!isNaN(val) && val >= 0 && val <= 100) return Number(val);
+    }
+  }
+  const allKeys = Object.keys(obj);
+  for (const key of allKeys) {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.includes('id') || lowerKey.includes('count') || lowerKey.includes('number') || lowerKey.includes('total')) continue;
+    if (lowerKey.includes('progress') || lowerKey.includes('completion') || lowerKey.includes('percent') || lowerKey.includes('pct')) {
+      let val = obj[key];
+      if (typeof val === 'string') val = parseFloat(val.replace('%', ''));
+      if (typeof val === 'number' && val >= 0 && val <= 100) return val;
+    }
+  }
+  return 0;
+};
+
 const ProjectDetails = ({ userRole, onLogout }) => {
   const navigate = useNavigate();
   const { id } = useParams();
   const location = useLocation();
   const viewMode = location.state?.viewMode || 'full';
 
-  const [activeTab, setActiveTab] = useState(viewMode === 'milestones_only' ? 'Milestones & Tasks' : 'Overview');
+  const [activeTab, setActiveTab] = useState(
+    location.state?.activeTab || (viewMode === 'milestones_only' ? 'Milestones & Tasks' : 'Overview')
+  );
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [milestones, setMilestones] = useState([]);
+  const [tasks, setTasks] = useState([]);
 
   let tabs = ['Overview', 'Milestones & Tasks', 'Gantt Chart', 'Forecasting', 'Documents', 'Change Logs'];
   if (viewMode === 'milestones_only') {
@@ -97,14 +138,43 @@ const ProjectDetails = ({ userRole, onLogout }) => {
             companyName: coyData.find(c => c.coyId === targetRaw.coyId)?.coyNm || "",
             plantName: pltData.find(pl => pl.pltId === targetRaw.pltId)?.pltNm || "",
             department: deptData.find(dep => dep.deptId === targetRaw.deptId)?.deptNm || "",
-            budget: targetRaw.budget || "N/A",
+            budget: targetRaw.budget || "Not Specified",
             remarks: targetRaw.addlRem || "",
             logo: targetRaw.logo || null,
             createdBy: targetRaw.createdByName ||
               targetRaw.createdBy ||
               getLoggedInUser(),
+            progress: location.state?.projectProgress ?? extractProgress(targetRaw),
             _type: isDraft ? "draft" : "live"
           };
+
+          // Fetch milestones and tasks for this specific project
+          const mlUrl = isDraft
+            ? `${apiBaseUrl}/api/milestone-drafts/by-project/${p.id}`
+            : `${apiBaseUrl}/api/milestone-live/by-project/${p.id}`;
+          const taskUrl = isDraft
+            ? `${apiBaseUrl}/api/task-drafts`
+            : `${apiBaseUrl}/api/task-live`;
+
+          const [mlRes, taskRes] = await Promise.all([
+            fetch(mlUrl, { headers: getAuthHeaders() }),
+            fetch(taskUrl, { headers: getAuthHeaders() })
+          ]);
+
+          const mlData = mlRes.ok ? await mlRes.json() : [];
+          const taskDataRaw = taskRes.ok ? await taskRes.json() : [];
+
+          const getMilestoneId = (m) => isDraft ? (m.drftMId || m.drft_m_id || m.id) : (m.mId || m.mid || m.id);
+          const getTaskMilestoneId = (t) => isDraft ? (t.drftMId || t.drft_m_id || t.mId || t.mid) : (t.mId || t.mid || t.mlstm_id);
+
+          const milestoneIds = mlData.map(m => String(getMilestoneId(m)));
+          const projectTasks = taskDataRaw.filter(t => {
+            const tMid = String(getTaskMilestoneId(t));
+            return milestoneIds.includes(tMid);
+          });
+
+          setMilestones(mlData);
+          setTasks(projectTasks);
           setProject(p);
         }
       } catch (err) {
@@ -125,30 +195,89 @@ const ProjectDetails = ({ userRole, onLogout }) => {
     return <div className="proj-shell-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>Project Not Found.</div>;
   }
 
-  // Dynamic progress calculation
-  const calculateProgress = (p) => {
-    // Generate a pseudo-random seed based on project ID
-    const seed = String(p.id).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) + 123;
-    const total = 20 + (seed % 30); // 20 to 50 tasks
+  // Dynamic progress calculation using actual tasks from the backend
+  const calculateProgress = (p, taskList) => {
+    if (!p) return { overall: 0, completed: 0, inProgress: 0, notStarted: 0, overdue: 0, total: 0 };
 
-    // Ensure overall progress is always non-zero and realistic
-    let overall = 15 + (seed % 80); // 15% to 94%
+    const isDraft = p.status === 'DRAFT';
+    const total = taskList.length;
 
-    if (p.status === 'DRAFT') {
-      overall = 10 + (seed % 20); // 10% to 29% for drafts
+    // Count status breakdown based on actual task statuses
+    const completed = taskList.filter(t => {
+      const s = (t.taskSts || t.task_sts || '').toUpperCase();
+      return s === 'COMPLETED';
+    }).length;
+
+    const inProgress = taskList.filter(t => {
+      const s = (t.taskSts || t.task_sts || '').toUpperCase();
+      return s === 'WIP' || s === 'IN PROGRESS' || s === 'IN_PROGRESS';
+    }).length;
+
+    const todayObj = new Date();
+    todayObj.setHours(0, 0, 0, 0);
+
+    const overdue = taskList.filter(t => {
+      const s = (t.taskSts || t.task_sts || '').toUpperCase();
+      if (s === 'COMPLETED') return false;
+      const endDtStr = t.tentEndDt || t.tent_end_dt || t.endDt || t.end_dt;
+      if (!endDtStr) return false;
+      const endDt = new Date(endDtStr);
+      return endDt < todayObj;
+    }).length;
+
+    const notStarted = Math.max(0, total - completed - inProgress - overdue);
+
+    // Calculate weighted overall progress percentage matching backend logic
+    let overall = 0;
+    if (total > 0) {
+      let totalWeight = 0;
+      let completedWeight = 0;
+      taskList.forEach(t => {
+        const wrkDaysVal = t.wrkDays || t.wrk_days;
+        const noOfDaysVal = t.noOfDays || t.no_of_days;
+        const weight = (wrkDaysVal && wrkDaysVal > 0) ? wrkDaysVal : ((noOfDaysVal && noOfDaysVal > 0) ? noOfDaysVal : 1.0);
+
+        const sts = t.taskSts || t.task_sts || 'Open';
+        const stsName = typeof sts === 'object' ? (sts.statusNm || sts.status_nm || '') : String(sts);
+        const subSts = t.subStatus || t.sub_status || '';
+        const stsUpper = stsName.toUpperCase().trim();
+        const subUpper = subSts.toUpperCase().trim();
+
+        let taskPct = 0.0;
+        if (stsUpper === 'COMPLETED') {
+          taskPct = 100.0;
+        } else if (stsUpper === 'WIP' || stsUpper === 'IN PROGRESS' || stsUpper === 'IN_PROGRESS') {
+          if (subUpper === 'UNDER REVIEW' || subUpper === 'UNDER_REVIEW') {
+            taskPct = 80.0;
+          } else if (subUpper === 'REWORK') {
+            taskPct = 20.0;
+          } else {
+            taskPct = 50.0;
+          }
+        }
+        totalWeight += weight;
+        completedWeight += (taskPct / 100.0) * weight;
+      });
+      overall = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
+    } else {
+      overall = p.progress || 0;
     }
 
-    const completed = Math.floor((overall / 100) * total);
-    const remaining = total - completed;
+    if (isDraft) {
+      overall = total > 0 ? overall : 0; // if it's a draft, calculate it or default to 0
+    }
 
-    const inProgress = Math.floor(remaining * 0.4);
-    const overdue = seed % 4; // 0 to 3 overdue tasks
-    const notStarted = Math.max(0, remaining - inProgress - overdue);
-
-    return { overall, completed, inProgress, notStarted, overdue, total: completed + inProgress + notStarted + overdue };
+    return {
+      overall,
+      completed,
+      inProgress,
+      notStarted,
+      overdue,
+      total
+    };
   };
 
-  const progressData = calculateProgress(project);
+  const progressData = calculateProgress(project, tasks);
 
   const getPercentage = (val, total) => total > 0 ? ((val / total) * 100).toFixed(2) : 0;
 
@@ -162,6 +291,21 @@ const ProjectDetails = ({ userRole, onLogout }) => {
     #f59e0b ${ang2}deg ${ang3}deg,
     #ef4444 ${ang3}deg 360deg
   )`;
+
+  const formatBulletedText = (text, fallback) => {
+    if (!text) return fallback;
+    if (text.includes('•')) {
+      const parts = text.split('•').map(p => p.replace(/[\n,]/g, '').trim()).filter(Boolean);
+      return (
+        <div style={{ marginTop: '4px', lineHeight: '1.5' }}>
+          {parts.map((p, i) => (
+            <span key={i} style={{ display: 'inline', marginRight: '8px' }}>• {p}</span>
+          ))}
+        </div>
+      );
+    }
+    return <span style={{ display: 'block', marginTop: '4px' }}>{text}</span>;
+  };
 
   return (
     <div className="proj-shell-container">
@@ -199,59 +343,60 @@ const ProjectDetails = ({ userRole, onLogout }) => {
 
               <div className="pd-info-wrapper">
                 <div className="pd-title-row">
-                  <span className={`pd-badge ${project.status === 'LIVE' ? 'live' : project.status === 'DRAFT' ? 'draft' : ''}`}>{project.status}</span>
                   <h2>{project.projectName}</h2>
+                  <span className={`pd-badge ${project.status === 'LIVE' ? 'live' : project.status === 'DRAFT' ? 'draft' : ''}`}>{project.status}</span>
                 </div>
 
                 <div className="pd-meta-tags">
                   <span className="pd-tag blue">{project.projectCode}</span>
                   <span className="pd-tag red">{project.priority} PRIORITY</span>
-                  <span className="pd-tag gray">Created by {project.createdBy}</span>
                 </div>
 
                 <p className="pd-description">{project.projectDescription || "No description provided."}</p>
 
-                <div className="pd-details-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                <div className="pd-details-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
                   <div className="pd-detail-item">
                     <span className="pd-label">Company</span>
-                    <span className="pd-value">{project.companyName || "N/A"}</span>
+                    <span className="pd-value">{project.companyName || "Not Specified"}</span>
                   </div>
                   <div className="pd-detail-item">
                     <span className="pd-label">Plant</span>
-                    <span className="pd-value">{project.plantName || "N/A"}</span>
+                    <span className="pd-value">{project.plantName || "Not Specified"}</span>
                   </div>
                   <div className="pd-detail-item">
                     <span className="pd-label">Department</span>
-                    <span className="pd-value">{project.department || "N/A"}</span>
+                    <span className="pd-value">{project.department || "Not Specified"}</span>
                   </div>
+                  
+                </div>
+
+                <div className="pd-details-grid mt-4" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
                   <div className="pd-detail-item">
-                    <span className="pd-label">Project Manager</span>
-                    <span className="pd-value">{project.createdBy}</span>
+                    <span className="pd-label">Total Project Days</span>
+                    <span className="pd-value">{project.totalProjectDays ? `${project.totalProjectDays} Days` : "Not Specified"}</span>
                   </div>
                   <div className="pd-detail-item">
                     <span className="pd-label">Tentative Start Date</span>
-                    <span className="pd-value">{project.startDate || "N/A"}</span>
+                    <span className="pd-value">{formatDateToDDMMYYYY(project.startDate)}</span>
                   </div>
-
-                  <div className="pd-detail-item mt-2">
+                  <div className="pd-detail-item">
                     <span className="pd-label">Tentative End Date</span>
-                    <span className="pd-value">{project.endDate || "N/A"}</span>
+                    <span className="pd-value">{formatDateToDDMMYYYY(project.endDate)}</span>
                   </div>
-                  <div className="pd-detail-item mt-2">
-                    <span className="pd-label">Total Project Days</span>
-                    <span className="pd-value">{project.totalProjectDays ? `${project.totalProjectDays} Days` : "N/A"}</span>
-                  </div>
-                  <div className="pd-detail-item mt-2">
-                    <span className="pd-label">Expected Deliverables</span>
-                    <span className="pd-value">{project.expectedDeliverables || "N/A"}</span>
-                  </div>
-                  <div className="pd-detail-item mt-2">
+                  <div className="pd-detail-item">
                     <span className="pd-label">Remarks</span>
-                    <span className="pd-value">{project.remarks || "N/A"}</span>
+                    <span className="pd-value">{project.remarks || "No Remarks"}</span>
                   </div>
-                  <div className="pd-detail-item mt-2">
+                </div>
+
+                <div className="pd-details-grid mt-4" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+                  <div className="pd-detail-item">
                     <span className="pd-label">Project Objective</span>
-                    <span className="pd-value">{project.projectObjective || "No objective defined."}</span>
+                    <span className="pd-value">{formatBulletedText(project.projectObjective, "No objective defined.")}</span>
+                  </div>
+                  <div className="pd-detail-item">
+                    <span className="pd-label">Expected Deliverables</span>
+                    <span className="pd-value">{formatBulletedText(project.expectedDeliverables, "Not Specified")}</span>
                   </div>
                 </div>
               </div>
@@ -296,7 +441,6 @@ const ProjectDetails = ({ userRole, onLogout }) => {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '13px', color: '#64748b' }}>
                 <span>Priority: <strong style={{ color: project.priority === 'HIGH' ? '#ef4444' : '#f59e0b' }}>{project.priority}</strong></span>
-                <span>Manager: <strong style={{ color: '#334155' }}>{project.createdBy}</strong></span>
               </div>
             </div>
           )}
@@ -319,7 +463,7 @@ const ProjectDetails = ({ userRole, onLogout }) => {
             {activeTab === 'Overview' && <ProjectOverview project={project} />}
             {activeTab === 'Milestones & Tasks' && <ProjectMilestonesTab project={project} userRole={userRole} />}
             {activeTab === 'Gantt Chart' && <ProjectGanttChart project={project} userRole={userRole} />}
-            {activeTab === 'Documents' && <DocsAndReports isTab={true} />}
+            {activeTab === 'Documents' && <DocsAndReports isTab={true} project={project} />}
             {activeTab === 'Forecasting' && <ProjectForecasting project={project} progressData={progressData} />}
             {activeTab === 'Change Logs' && <ProjectChangeLogs project={project} progressData={progressData} />}
           </div>

@@ -29,7 +29,7 @@ public class TaskLive {
     @Column(name = "m_id", nullable = false)
     private Long mId;
 
-    @Column(name = "task_cd", unique = true, length = 10)
+    @Column(name = "task_cd", length = 10)
     private String taskCd;
 
     @Column(name = "task_nm", nullable = false, length = 100)

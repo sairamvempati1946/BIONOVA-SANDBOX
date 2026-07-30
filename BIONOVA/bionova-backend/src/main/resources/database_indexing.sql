@@ -9,18 +9,15 @@ CREATE INDEX IF NOT EXISTS idx_emp_coy_id ON employee_master(coy_id);
 CREATE INDEX IF NOT EXISTS idx_emp_plt_id ON employee_master(plt_id);
 CREATE INDEX IF NOT EXISTS idx_emp_dept_id ON employee_master(dept_id);
 CREATE INDEX IF NOT EXISTS idx_emp_desig_id ON employee_master(desig_id);
-CREATE INDEX IF NOT EXISTS idx_emp_prnt_coy_id ON employee_master(prnt_coy_id);
 
 -- 2. Individual Tasks / Assignments Indexes
 CREATE INDEX IF NOT EXISTS idx_asgn_emp_id ON employee_individual_task_master(emp_id);
 CREATE INDEX IF NOT EXISTS idx_asgn_assigned_by ON employee_individual_task_master(assigned_by);
-CREATE INDEX IF NOT EXISTS idx_asgn_coy_id ON employee_individual_task_master(coy_id);
 CREATE INDEX IF NOT EXISTS idx_asgn_task_sts ON employee_individual_task_master(task_sts);
 
 -- 3. Live Tasks Indexes
 CREATE INDEX IF NOT EXISTS idx_task_live_m_id ON task_live_master(m_id);
 CREATE INDEX IF NOT EXISTS idx_task_live_emp_id ON task_live_master(emp_id);
-CREATE INDEX IF NOT EXISTS idx_task_live_assigned_by ON task_live_master(assigned_by);
 CREATE INDEX IF NOT EXISTS idx_task_live_task_sts ON task_live_master(task_sts);
 
 -- 4. Live Milestones Indexes

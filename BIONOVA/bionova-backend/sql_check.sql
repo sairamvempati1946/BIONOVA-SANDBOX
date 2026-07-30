@@ -1,3 +1,24 @@
+CREATE TABLE IF NOT EXISTS employee_individual_task_master (
+    emp_task_id BIGSERIAL PRIMARY KEY,
+    task_cd VARCHAR(10),
+    task_nm VARCHAR(100) NOT NULL,
+    task_desc VARCHAR(255),
+    emp_id BIGINT NOT NULL,
+    assigned_by BIGINT,
+    task_asgn_to VARCHAR(10),
+    st_dt DATE,
+    end_dt DATE,
+    priority INT,
+    chk_flg BOOLEAN DEFAULT false,
+    atta_flg BOOLEAN DEFAULT false,
+    prcs_flg BOOLEAN DEFAULT false,
+    prcs_yes_actn VARCHAR(200),
+    task_sts INT DEFAULT 1,
+    sub_status VARCHAR(50),
+    remarks VARCHAR(255),
+    sts BOOLEAN DEFAULT true
+);
+
 CREATE OR REPLACE FUNCTION get_user_dashboard(p_emp_id BIGINT) 
 RETURNS jsonb 
 LANGUAGE plpgsql 

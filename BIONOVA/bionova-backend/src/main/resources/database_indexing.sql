@@ -11,6 +11,27 @@ CREATE INDEX IF NOT EXISTS idx_emp_dept_id ON employee_master(dept_id);
 CREATE INDEX IF NOT EXISTS idx_emp_desig_id ON employee_master(desig_id);
 
 -- 2. Individual Tasks / Assignments Indexes
+CREATE TABLE IF NOT EXISTS employee_individual_task_master (
+    emp_task_id BIGSERIAL PRIMARY KEY,
+    task_cd VARCHAR(10),
+    task_nm VARCHAR(100) NOT NULL,
+    task_desc VARCHAR(255),
+    emp_id BIGINT NOT NULL,
+    assigned_by BIGINT,
+    task_asgn_to VARCHAR(10),
+    st_dt DATE,
+    end_dt DATE,
+    priority INT,
+    chk_flg BOOLEAN DEFAULT false,
+    atta_flg BOOLEAN DEFAULT false,
+    prcs_flg BOOLEAN DEFAULT false,
+    prcs_yes_actn VARCHAR(200),
+    task_sts INT DEFAULT 1,
+    sub_status VARCHAR(50),
+    remarks VARCHAR(255),
+    sts BOOLEAN DEFAULT true
+);
+
 CREATE INDEX IF NOT EXISTS idx_asgn_emp_id ON employee_individual_task_master(emp_id);
 CREATE INDEX IF NOT EXISTS idx_asgn_assigned_by ON employee_individual_task_master(assigned_by);
 CREATE INDEX IF NOT EXISTS idx_asgn_task_sts ON employee_individual_task_master(task_sts);

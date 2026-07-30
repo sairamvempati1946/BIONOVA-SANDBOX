@@ -11,12 +11,11 @@ const getAuthHeaders = () => ({
 const ProjectOverview = ({ project }) => {
   const [milestones, setMilestones] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!project?.id) return;
-      setLoading(true);
       try {
         const isDraft = project._type === "draft" || project.status === "DRAFT" || project.status === "Draft";
         const milestonesUrl = isDraft
@@ -43,19 +42,38 @@ const ProjectOverview = ({ project }) => {
         }
         const empData = empRes.ok ? await empRes.json() : [];
 
-        const getMilestoneId = (obj) =>
-          obj.mid ??
-          obj.mId ??
-          obj.m_id ??
-          obj.drftMId ??
-          obj.drft_m_id ??
-          obj.milestoneId ??
-          obj.milestone_id ??
-          obj.mlstnId ??
-          obj.mlstn_id ??
-          obj.mlstmId ??
-          obj.mlstm_id ??
-          obj.id;
+        const getMilestoneId = (obj) => {
+          if (!obj) return null;
+          return (
+            obj.mid ??
+            obj.mId ??
+            obj.m_id ??
+            obj.drftMId ??
+            obj.drft_m_id ??
+            obj.milestoneId ??
+            obj.milestone_id ??
+            obj.mlstnId ??
+            obj.mlstn_id ??
+            obj.mlstmId ??
+            obj.mlstm_id ??
+            obj.id
+          );
+        };
+
+        const getTaskStatusStr = (t) => {
+          if (!t) return '';
+          let sts = t.taskSts ?? t.task_sts ?? t.status ?? t.tasksts;
+          if (!sts) return '';
+          if (typeof sts === 'object') {
+            sts = sts.statusNm || sts.status_nm || sts.name || sts.status || '';
+          }
+          return String(sts).trim().toUpperCase();
+        };
+
+        const isTaskDone = (t) => {
+          const s = getTaskStatusStr(t);
+          return s === 'COMPLETED' || s === 'CLOSED' || s === 'DONE' || s === 'COMPLETE';
+        };
 
         const milestoneIds = mlData.map(getMilestoneId);
 
@@ -65,33 +83,19 @@ const ProjectOverview = ({ project }) => {
 
         // Map Milestones for display
         const mappedMilestones = mlData.map((m, idx) => {
-          const mId =
-            m.mid ??
-            m.mId ??
-            m.m_id ??
-            m.drftMId ??
-            m.drft_m_id ??
-            m.id;
+          const mId = getMilestoneId(m);
           const mTasks = filteredTasks.filter(t => {
-            const taskMid =
-              t.mid ??
-              t.mId ??
-              t.m_id ??
-              t.drftMId ??
-              t.drft_m_id ??
-              t.milestoneId ??
-              t.mlstm_id;
-
+            const taskMid = getMilestoneId(t);
             return String(taskMid) === String(mId);
           });
-          const completedTasksCount = mTasks.filter(t => (t.taskSts || t.task_sts || '').toUpperCase() === 'COMPLETED').length;
+          const completedTasksCount = mTasks.filter(isTaskDone).length;
 
           let progressPct = 0;
           if (mTasks.length > 0) {
             progressPct = Math.round((completedTasksCount / mTasks.length) * 100);
           } else {
             const statusUpper = (m.mlstnSts || m.mlstn_sts || m.mlstmSts || m.mlstm_sts || '').toUpperCase();
-            if (statusUpper === 'COMPLETED') progressPct = 100;
+            if (statusUpper === 'COMPLETED' || statusUpper === 'CLOSED') progressPct = 100;
             else if (statusUpper === 'IN_PROGRESS' || statusUpper === 'WIP' || statusUpper === 'LIVE') progressPct = 50;
           }
 
@@ -109,33 +113,32 @@ const ProjectOverview = ({ project }) => {
 
         // Map Tasks for display
         const mappedTasks = filteredTasks.map((t, idx) => {
-          const mId =
-            t.mid ??
-            t.mId ??
-            t.m_id ??
-            t.drftMId ??
-            t.drft_m_id ??
-            t.milestoneId ??
-            t.mlstm_id;
-          const milestoneObj = mappedMilestones.find(m => m.id === mId);
+          const mId = getMilestoneId(t);
+          const milestoneObj = mappedMilestones.find(m => String(m.id) === String(mId));
           const milestoneCode = milestoneObj ? milestoneObj.code : 'N/A';
 
           const emp = empData.find(e => e.empId === t.empId);
           const assigneeName = emp ? `${emp.fstNm || ''} ${emp.lstNm || ''}`.trim() : (t.taskAsgnTo || 'Unassigned');
 
-          const statusUpper = (t.taskSts || t.task_sts || 'DRAFT').toUpperCase().replace(/_/g, ' ');
+          const rawSts = getTaskStatusStr(t);
           let progressPct = 0;
-          if (statusUpper === 'COMPLETED') progressPct = 100;
-          else if (statusUpper === 'IN_PROGRESS' || statusUpper === 'WIP') progressPct = 50;
+          if (isTaskDone(t)) {
+            progressPct = 100;
+          } else if (rawSts === 'IN PROGRESS' || rawSts === 'WIP' || rawSts === 'IN_PROGRESS') {
+            progressPct = 50;
+          }
+
+          const displayStatus = isTaskDone(t) ? 'CLOSED' : (rawSts.replace(/_/g, ' ') || 'DRAFT');
 
           return {
+            rawTask: t,
             code: t.taskCd || t.task_cd || `TSK-${String(idx + 1).padStart(3, '0')}`,
             name: t.taskNm || t.task_nm || 'N/A',
             milestone: milestoneCode,
             assignee: assigneeName,
             start: t.stDt || t.st_dt || t.tentStDt || t.tent_st_dt || 'N/A',
             end: t.endDt || t.end_dt || t.tentEndDt || t.tent_end_dt || 'N/A',
-            status: statusUpper,
+            status: displayStatus,
             progress: progressPct
           };
         });
@@ -156,6 +159,7 @@ const ProjectOverview = ({ project }) => {
     if (!status) return 'st-default';
     const s = status.toUpperCase();
     switch (s) {
+      case 'CLOSED':
       case 'COMPLETED': return 'st-completed';
       case 'IN PROGRESS':
       case 'WIP':
@@ -185,12 +189,12 @@ const ProjectOverview = ({ project }) => {
   const today = new Date();
   const totalMilestones = milestones.length;
   const totalTasks = tasks.length;
-  const completedTasks = tasks.filter(t => t.status === 'COMPLETED').length;
+  const completedTasks = tasks.filter(t => t.status === 'COMPLETED' || t.status === 'CLOSED').length;
   const inProgressTasks = tasks.filter(t => t.status === 'IN PROGRESS' || t.status === 'WIP').length;
   const notStartedTasks = tasks.filter(t => t.status === 'DRAFT' || t.status === 'OPEN' || t.status === 'NOT STARTED').length;
 
   const overdueTasks = tasks.filter(t => {
-    if (t.status === 'COMPLETED') return false;
+    if (t.status === 'COMPLETED' || t.status === 'CLOSED') return false;
     if (!t.end || t.end === 'N/A') return false;
     const endD = new Date(t.end);
     return endD < today;
@@ -202,7 +206,7 @@ const ProjectOverview = ({ project }) => {
     { label: "Not Started Tasks", value: String(notStartedTasks), subtitle: totalTasks > 0 ? `${((notStartedTasks / totalTasks) * 100).toFixed(1)}%` : "0.0%", icon: <AlertCircle size={20} color="#f59e0b" />, bg: "rgba(245, 158, 11, 0.1)" },
     { label: "In Progress Tasks", value: String(inProgressTasks), subtitle: totalTasks > 0 ? `${((inProgressTasks / totalTasks) * 100).toFixed(1)}%` : "0.0%", icon: <Clock size={20} color="#f97316" />, bg: "rgba(249, 115, 22, 0.1)" },
     { label: "Overdue Tasks", value: String(overdueTasks), subtitle: totalTasks > 0 ? `${((overdueTasks / totalTasks) * 100).toFixed(1)}%` : "0.0%", icon: <AlertTriangle size={20} color="#14b8a6" />, bg: "rgba(20, 184, 166, 0.1)" },
-    { label: "Completed Tasks", value: String(completedTasks), subtitle: totalTasks > 0 ? `${((completedTasks / totalTasks) * 100).toFixed(1)}%` : "0.0%", icon: <CheckCircle size={20} color="#10b981" />, bg: "rgba(16, 185, 129, 0.1)" },
+    { label: "Closed Tasks", value: String(completedTasks), subtitle: totalTasks > 0 ? `${((completedTasks / totalTasks) * 100).toFixed(1)}%` : "0.0%", icon: <CheckCircle size={20} color="#10b981" />, bg: "rgba(16, 185, 129, 0.1)" },
   ];
 
   return (

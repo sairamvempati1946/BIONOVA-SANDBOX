@@ -10,7 +10,12 @@ import com.bionova.enums.TimeStatus;
 import com.bionova.entity.ProjectLive;
 
 @Entity
-@Table(name = "task_live_master")
+@Table(name = "task_live_master", indexes = {
+        @Index(name = "idx_task_live_m_id", columnList = "m_id"),
+        @Index(name = "idx_task_live_emp_id", columnList = "emp_id"),
+        @Index(name = "idx_task_live_assigned_by", columnList = "assigned_by"),
+        @Index(name = "idx_task_live_task_sts", columnList = "task_sts")
+})
 @org.hibernate.annotations.Check(constraints =
     "task_asgn_to IN ('INTERNAL','EXTERNAL') AND task_dep_typ IN ('INDEPENDENT','SEQUENTIAL','PARALLEL')")
 @EntityListeners(com.bionova.config.AuditListener.class)
@@ -29,7 +34,7 @@ public class TaskLive {
     @Column(name = "m_id", nullable = false)
     private Long mId;
 
-    @Column(name = "task_cd", length = 10)
+    @Column(name = "task_cd", unique = true, length = 10)
     private String taskCd;
 
     @Column(name = "task_nm", nullable = false, length = 100)
@@ -183,15 +188,10 @@ public class TaskLive {
     }
 
     public TaskPriorityMaster getPriority() {
+        TaskPriorityMaster baseP = (this.priority != null) ? this.priority : TaskPriorityMaster.LOW;
         if (taskSts != null && "CLOSED".equalsIgnoreCase(taskSts.getStatusNm())) {
-            return this.priority != null ? this.priority : TaskPriorityMaster.calculatePriority(stDt, endDt, noOfDays, taskSts, actCmpDt);
+            return TaskPriorityMaster.calculatePriority(stDt, endDt, noOfDays, taskSts, actCmpDt, baseP);
         }
-        return TaskPriorityMaster.calculatePriority(stDt, endDt, noOfDays, taskSts, actCmpDt);
-    }
-
-    @PrePersist
-    @PreUpdate
-    public void preSave() {
-        this.priority = getPriority();
+        return TaskPriorityMaster.calculatePriority(stDt, endDt, noOfDays, taskSts, actCmpDt, baseP);
     }
 }

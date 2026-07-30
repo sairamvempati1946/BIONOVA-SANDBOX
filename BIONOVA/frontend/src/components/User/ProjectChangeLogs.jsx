@@ -24,12 +24,11 @@ export default function ProjectChangeLogs({ project, progressData }) {
   const actualProgress = progressData?.overall || 0;
 
   const [dbLogs, setDbLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const fetchLogs = async () => {
       if (!project?.id) return;
-      setLoading(true);
       try {
         // 1. Fetch all activity logs
         const res = await fetch(`${API_BASE}/activity-logs`, { headers: authHeaders() });

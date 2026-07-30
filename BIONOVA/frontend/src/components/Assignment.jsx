@@ -132,7 +132,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, name, style, 
                     }
                     setSearch("");
                   }}
-                  style={{ padding: '10px 12px', cursor: 'pointer', backgroundColor: (isMulti ? (value || []).includes(String(opt.value)) : String(value) === String(opt.value)) ? '#f1f5f9' : 'transparent', fontSize: '14px' }}
+                  style={{ padding: '10px 12px', cursor: 'pointer', backgroundColor: (isMulti ? (value || []).includes(String(opt.value)) : String(value) === String(opt.value)) ? '#f1f5f9' : 'transparent', fontSize: '14px', color: '#0f172a' }}
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = (isMulti ? (value || []).includes(String(opt.value)) : String(value) === String(opt.value)) ? '#f1f5f9' : 'transparent'}
                 >
@@ -326,12 +326,55 @@ const Assignment = ({ userRole, onLogout }) => {
 
   // --- Attachments & checklist state ---
   const [attachments, setAttachments] = useState([]);
+  const [existingAttachments, setExistingAttachments] = useState([]);
   const fileInputRef = useRef(null);
   const [checklist, setChecklist] = useState([]);
   const [editingItemId, setEditingItemId] = useState(null);
   const [editingItemName, setEditingItemName] = useState("");
   const [isAddingChecklist, setIsAddingChecklist] = useState(false);
   const [newChecklistName, setNewChecklistName] = useState("");
+
+  const removeExistingAttachment = async (fileId) => {
+    try {
+      await fetch(`${apiBaseUrl}/api/attachments/${fileId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders()
+      });
+      setExistingAttachments(existingAttachments.filter(a => a.fileId !== fileId));
+    } catch (e) {
+      console.error("Failed to delete attachment:", e);
+    }
+  };
+
+  // --- Helper: Task Code Formatting & Auto Generation ---
+  const formatTaskCode = (cd) => {
+    if (!cd) return "";
+    const match = String(cd).match(/^INDTSK-?(\d+)$/i);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      return `INDTSK-${String(num).padStart(3, '0')}`;
+    }
+    return cd;
+  };
+
+  const generateNextTaskCode = (allTasks) => {
+    if (!allTasks || allTasks.length === 0) return "INDTSK-001";
+    
+    let maxNum = 0;
+    allTasks.forEach(t => {
+      const cd = t.taskCd || t.task_cd || "";
+      const match = String(cd).match(/INDTSK-?(\d+)/i);
+      if (match && match[1]) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    });
+
+    const nextNum = maxNum + 1;
+    return `INDTSK-${String(nextNum).padStart(3, '0')}`;
+  };
 
   // --- Helper: get employee name from ID ---
   const getEmployeeName = (id) => {
@@ -438,8 +481,61 @@ const Assignment = ({ userRole, onLogout }) => {
     }
   };
 
+  const fetchTasksSilent = async () => {
+    try {
+      const currentSessionEmpId = sessionStorage.getItem("empId");
+      const [tasksRes, assignedByRes] = await Promise.all([
+        fetch(`${apiBaseUrl}/api/assignments`, { headers: getAuthHeaders() }),
+        currentSessionEmpId ? fetch(`${apiBaseUrl}/api/assignments/assigned-by/${currentSessionEmpId}`, { headers: getAuthHeaders() }) : Promise.resolve(null)
+      ]);
+
+      if (tasksRes.ok) {
+        let rawTasks = await tasksRes.json();
+        if (assignedByRes && assignedByRes.ok) {
+          const assignedByTasks = await assignedByRes.json();
+          const existingIds = new Set(rawTasks.map(t => t.empTaskId || t.id));
+          assignedByTasks.forEach(t => {
+            if (!existingIds.has(t.empTaskId || t.id)) {
+              rawTasks.push(t);
+            }
+          });
+        }
+        const enrichedTasks = await Promise.all(rawTasks.map(async (task) => {
+          let reviewerName = task.reviewerNm || "N/A";
+          let approverName = task.approverNm || "N/A";
+          let checklistCount = 0;
+          try {
+            const chkRes = await fetch(`${apiBaseUrl}/api/checklists/assignments/${task.empTaskId || task.id}?t=${new Date().getTime()}`, { headers: getAuthHeaders() });
+            if (chkRes.ok) {
+              const chks = await chkRes.json();
+              checklistCount = chks.length;
+            }
+          } catch(err) {}
+          return { ...task, reviewerName, approverName, checklistCount };
+        }));
+        setTasks(enrichedTasks);
+      }
+    } catch (err) {
+      console.error("Error silently updating tasks", err);
+    }
+  };
+
   React.useEffect(() => {
     fetchAllData();
+
+    const interval = setInterval(() => {
+      fetchTasksSilent();
+    }, 8000);
+
+    const handleFocus = () => {
+      fetchTasksSilent();
+    };
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, []);
 
   // --- QuickAddBox ---
@@ -536,9 +632,8 @@ const Assignment = ({ userRole, onLogout }) => {
   };
 
   // --- Form handlers ---
-  const handleResetForm = () => {
+  const handleResetForm = async () => {
     setEditId(null);
-    setTaskCode("");
     setTaskTitle("");
     setPriority("High");
     setStatus("Draft");
@@ -553,6 +648,21 @@ const Assignment = ({ userRole, onLogout }) => {
     setEnableWorkflow(false);
     setChecklist([]);
     setAttachments([]);
+    setExistingAttachments([]);
+
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/assignments/next-code`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.nextTaskCode) {
+          setTaskCode(data.nextTaskCode);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch next-code from DB endpoint:", e);
+    }
+    setTaskCode(generateNextTaskCode(tasks));
   };
 
   const handleEdit = (task) => {
@@ -588,6 +698,8 @@ const Assignment = ({ userRole, onLogout }) => {
     
     setReviewer([]);
     setApprover([]);
+    setAttachments([]);
+    setExistingAttachments([]);
 
     const taskId = task.empTaskId || task.id;
     if (taskId) {
@@ -618,6 +730,18 @@ const Assignment = ({ userRole, onLogout }) => {
             setChecklist([]);
           }
         });
+
+      // Fetch existing attachments
+      fetch(`${apiBaseUrl}/api/attachments/assignment/${taskId}?t=${new Date().getTime()}`, { headers: getAuthHeaders() })
+        .then(res => res.ok ? res.json() : [])
+        .then(atts => {
+          if (atts && Array.isArray(atts)) {
+            setExistingAttachments(atts);
+          } else {
+            setExistingAttachments([]);
+          }
+        })
+        .catch(() => setExistingAttachments([]));
     }
 
     setView("form");
@@ -650,40 +774,9 @@ const Assignment = ({ userRole, onLogout }) => {
   // --- Date calculations ---
   const recalculateDueDate = (start, dur, empId) => {
     if (!start || !dur) return;
-    const emp = employees.find(e => String(e.empId || e.id) === String(empId));
-    if (!emp) {
-      const end = new Date(start);
-      end.setDate(end.getDate() + Math.max(0, parseInt(dur, 10) - 1));
-      setDueDate(end.toISOString().split('T')[0]);
-      return;
-    }
-
-    const pltId = emp.pltId || emp.plantId;
-    const coyId = emp.coyId || emp.companyId;
-
-    let skipSat = false;
-    let skipSun = true;
-
-    if (pltId) {
-      const plantObj = plants.find(p => String(p.pltId || p.id) === String(pltId));
-      if (plantObj) {
-        const wrkDays = plantObj.wrkDaysPerWk;
-        if (wrkDays === 5) { skipSat = true; skipSun = true; }
-        else if (wrkDays === 6) { skipSat = false; skipSun = true; }
-        else if (wrkDays === 7) { skipSat = false; skipSun = false; }
-      }
-    } else if (coyId) {
-      const coyObj = companies.find(c => String(c.coyId || c.id) === String(coyId));
-      if (coyObj) {
-        const wrkDays = coyObj.wrkDaysPerWk || coyObj.workingDaysPerWeek;
-        if (wrkDays === 5) { skipSat = true; skipSun = true; }
-        else if (wrkDays === 6) { skipSat = false; skipSun = true; }
-        else if (wrkDays === 7) { skipSat = false; skipSun = false; }
-      }
-    }
-
-    const calculatedEnd = calcEndDate(start, parseInt(dur, 10), skipSat, skipSun, []);
-    setDueDate(calculatedEnd);
+    const end = new Date(start);
+    end.setDate(end.getDate() + Math.max(0, parseInt(dur, 10) - 1));
+    setDueDate(end.toISOString().split('T')[0]);
   };
 
   const handleStartDateChange = (e) => {
@@ -733,16 +826,40 @@ const Assignment = ({ userRole, onLogout }) => {
   };
 
   // --- Attachments handlers ---
+  const isDisallowedFile = (file) => {
+    if (!file || !file.name) return false;
+    return /\.(zip|rar|7z|tar|gz|iso|mp3|wav|aac|m4a|ogg|flac|wma|mp4|avi|mov|mkv|webm|flv|wmv|3gp|m4v)$/i.test(file.name);
+  };
+
+  const filterAllowedFiles = (fileList) => {
+    const allowed = [];
+    let hasDisallowed = false;
+    for (let file of fileList) {
+      if (isDisallowedFile(file)) {
+        hasDisallowed = true;
+      } else {
+        allowed.push(file);
+      }
+    }
+    if (hasDisallowed) {
+      triggerAlert("warning", "Restricted File Type", "ZIP, Audio, and Video files are not allowed. Please upload Documents or Images only.");
+    }
+    return allowed;
+  };
+
   const handleFileDrop = (e) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      setAttachments([...attachments, ...Array.from(e.dataTransfer.files)]);
+      const validFiles = filterAllowedFiles(Array.from(e.dataTransfer.files));
+      setAttachments(prev => [...prev, ...validFiles]);
     }
   };
 
   const handleFileInput = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      setAttachments([...attachments, ...Array.from(e.target.files)]);
+      const validFiles = filterAllowedFiles(Array.from(e.target.files));
+      setAttachments(prev => [...prev, ...validFiles]);
+      e.target.value = "";
     }
   };
 
@@ -857,6 +974,10 @@ const Assignment = ({ userRole, onLogout }) => {
       extHolidays = !!publicHolidays?.external;
     }
 
+    const existingTaskObj = editId ? (tasks || []).find(t => String(t.empTaskId || t.id) === String(editId)) : null;
+    const currentSts = existingTaskObj ? (existingTaskObj.taskSts?.statusNm || existingTaskObj.taskSts || 'ASSIGNED') : 'ASSIGNED';
+    const hasAtta = (attachments && attachments.length > 0) || (existingAttachments && existingAttachments.length > 0);
+
     const taskPayload = {
       empTaskId: editId || null,
       taskCd: taskCode,
@@ -867,7 +988,9 @@ const Assignment = ({ userRole, onLogout }) => {
       taskAsgnTo: 'INTERNAL',
       stDt: startDate ? startDate : null,
       priority: priority.toUpperCase(),
-      taskSts: 'ASSIGNED',
+      taskSts: currentSts,
+      attaFlg: hasAtta,
+      chkFlg: checklist.length > 0,
       prcsFlg: enableWorkflow,
       prcsYesActn: enableWorkflow ? "YES" : "",
       sts: true
@@ -926,6 +1049,47 @@ const Assignment = ({ userRole, onLogout }) => {
               triggerAlert("error", "Checklist Error", errTxt);
             }
           } catch (e) { triggerAlert("error", "Checklist Exception", e.message); }
+        }
+
+        // Save Attachments
+        if (attachments && attachments.length > 0) {
+          for (let file of attachments) {
+            try {
+              const formData = new FormData();
+              formData.append("file", file);
+              const uploadRes = await fetch(`${apiBaseUrl}/api/storage/upload/attachment/task`, {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`
+                },
+                body: formData
+              });
+
+              if (uploadRes.ok) {
+                const uploadData = await uploadRes.json();
+                const fileUrl = uploadData?.url || "";
+                if (fileUrl) {
+                  await fetch(`${apiBaseUrl}/api/attachments/assignment/${taskId}`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                      fileNm: file.name,
+                      atPath: fileUrl,
+                      atType: "UPLOAD",
+                      refId: taskId,
+                      refType: "ASSIGNMENT",
+                      tId: taskId,
+                      isLive: true
+                    })
+                  });
+                }
+              } else {
+                console.error("Storage upload failed for file:", file.name);
+              }
+            } catch (attErr) {
+              console.error("Failed to upload attachment:", attErr);
+            }
+          }
         }
 
         // Save Process Configs
@@ -1019,8 +1183,7 @@ const Assignment = ({ userRole, onLogout }) => {
       baseTasks = baseTasks.filter(task => String(task.empId) === String(currentEmpId));
     } else if (assignmentView === "assignedByMe") {
       baseTasks = baseTasks.filter(task => 
-        String(task.assignedBy) === String(currentEmpId) && 
-        String(task.empId) !== String(currentEmpId)
+        String(task.assignedBy) === String(currentEmpId)
       );
     }
 
@@ -1081,7 +1244,7 @@ const Assignment = ({ userRole, onLogout }) => {
                       onChange={(e) => setSearchQuery(e.target.value)}
                       style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', outline: 'none', minWidth: '220px' }}
                     />
-                    <button className="cit-btn-create" style={{ background: '#2563eb', color: 'white', padding: '8px 16px', borderRadius: 6, border: 'none', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: '500' }} onClick={() => { handleResetForm(); setView("form"); }}>
+                    <button className="cit-btn-create" style={{ background: '#2563eb', color: 'white', padding: '8px 16px', borderRadius: 6, border: 'none', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: '500' }} onClick={async () => { await handleResetForm(); setView("form"); }}>
                       <Plus size={16} /> Assign New Task
                     </button>
                   </div>
@@ -1126,28 +1289,45 @@ const Assignment = ({ userRole, onLogout }) => {
                         const empName = task.empNm || "N/A";
                         const assignedByName = task.assignedByNm || "N/A";
                         const displayName = assignmentView === "my" ? assignedByName : empName;
+                        const isClosedTask = (() => {
+                          const sts = String(task.taskSts?.statusNm || task.taskSts || "").toUpperCase();
+                          const id = task.taskSts?.statusId || task.taskSts;
+                          return sts === "CLOSED" || sts === "COMPLETED" || id === 4;
+                        })();
 
                         return (
                           <tr key={task.empTaskId || task.id}>
-                            <td>{task.taskCd}</td>
+                            <td>{formatTaskCode(task.taskCd)}</td>
                             <td>{task.taskNm}</td>
                             <td>{displayName}</td>
                             <td>
-                              <span className={`cit-badge priority-${(task.priority || task.Priority || '').toLowerCase()}`}>
+                              <span className={`cit-badge priority-${(task.priority || task.Priority || '').toLowerCase() === 'critical' ? 'high' : (task.priority || task.Priority || '').toLowerCase()}`}>
                                 {task.priority || task.Priority || 'None'}
                               </span>
                             </td>
-                            <td><span style={{ color: "#2563eb", background: "#eff6ff", padding: "2px 8px", borderRadius: 4, fontWeight: 600, border: "1px solid #bfdbfe", fontSize: 12 }}>{task.taskSts}</span></td>
+                            <td>
+                              <span style={{ 
+                                color: isClosedTask ? "#16a34a" : "#2563eb", 
+                                background: isClosedTask ? "#dcfce7" : "#eff6ff", 
+                                padding: "2px 8px", 
+                                borderRadius: 4, 
+                                fontWeight: 600, 
+                                border: isClosedTask ? "1px solid #bbf7d0" : "1px solid #bfdbfe", 
+                                fontSize: 12 
+                              }}>
+                                {isClosedTask ? "Closed" : (task.taskSts?.statusNm || task.taskSts)}
+                              </span>
+                            </td>
                             <td>{task.stDt ? String(task.stDt).substring(0, 10) : ''}</td>
                             <td>{task.endDt ? String(task.endDt).substring(0, 10) : ''}</td>
                             <td>{task.reviewerName || "N/A"}</td>
                             <td>{task.approverName || "N/A"}</td>
                             <td>{task.checklistCount || 0} Items</td>
                             <td>
-                              <button className="cit-action-btn view" title="View" style={{ color: '#64748b', marginRight: 8 }} onClick={() => handleView(task)}>
+                              <button className="cit-action-btn view" title="View" style={{ color: '#64748b', marginRight: isClosedTask ? 0 : 8 }} onClick={() => handleView(task)}>
                                 <Eye size={16} />
                               </button>
-                              {assignmentView === "assignedByMe" && (
+                              {assignmentView === "assignedByMe" && !isClosedTask && (
                                 <>
                                   <button className="cit-action-btn edit" title="Edit" style={{ color: '#3b82f6', marginRight: 8 }} onClick={() => handleEdit(task)}>
                                     <Edit3 size={16} />
@@ -1253,13 +1433,13 @@ const Assignment = ({ userRole, onLogout }) => {
                           <label className="cc-field-item">
                             <span>Priority <b style={{ color: '#ef4444' }}>*</b></span>
                             <div className="cit-input-wrapper" style={{ margin: 0 }}>
-                              <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ color: priority === 'High' ? '#ef4444' : priority === 'Medium' ? '#eab308' : priority === 'Normal' ? '#3b82f6' : '#22c55e', fontWeight: 600 }}>
+                              <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ color: priority === 'High' || priority === 'Critical' ? '#ef4444' : priority === 'Medium' ? '#eab308' : priority === 'Normal' ? '#3b82f6' : '#22c55e', fontWeight: 600 }}>
                                 <option value="High" style={{ color: '#ef4444' }}>High</option>
                                 <option value="Medium" style={{ color: '#eab308' }}>Medium</option>
                                 <option value="Normal" style={{ color: '#3b82f6' }}>Normal</option>
                                 <option value="Low" style={{ color: '#22c55e' }}>Low</option>
                               </select>
-                              <ChevronDown size={14} className="cit-input-icon-right" style={{ color: priority === 'High' ? '#ef4444' : priority === 'Medium' ? '#eab308' : priority === 'Normal' ? '#3b82f6' : '#22c55e' }} />
+                              <ChevronDown size={14} className="cit-input-icon-right" style={{ color: priority === 'High' || priority === 'Critical' ? '#ef4444' : priority === 'Medium' ? '#eab308' : priority === 'Normal' ? '#3b82f6' : '#22c55e' }} />
                             </div>
                           </label>
                         </div>
@@ -1499,18 +1679,25 @@ const Assignment = ({ userRole, onLogout }) => {
                                 type="file"
                                 ref={fileInputRef}
                                 onChange={handleFileInput}
+                                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.webp"
                                 style={{ display: "none" }}
                                 multiple
                               />
                               <button className="cit-upload-btn" onClick={() => fileInputRef.current.click()}>Browse Files</button>
-                              <div className="cit-upload-info">Max file size: 10 MB (PDF, DOC, DOCX, XLS, XLSX, JPG, PNG)</div>
+                              <div className="cit-upload-info">Max file size: 10 MB (Documents & Images only. ZIP, Audio & Video files are NOT allowed.)</div>
                             </div>
-                            {attachments.length > 0 && (
+                            {(existingAttachments.length > 0 || attachments.length > 0) && (
                               <div className="cit-file-list" style={{ marginTop: '16px' }}>
+                                {existingAttachments.map((att, idx) => (
+                                  <div className="cit-file-item" key={`ext_${att.fileId || idx}`} style={{ backgroundColor: '#eff6ff', borderColor: '#bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '6px', marginBottom: '8px' }}>
+                                    <span style={{ fontWeight: 600, color: '#1e40af', fontSize: '13px' }}>📎 {att.fileNm || att.fileName} (Uploaded)</span>
+                                    <button className="cit-file-remove" type="button" onClick={() => removeExistingAttachment(att.fileId)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                                  </div>
+                                ))}
                                 {attachments.map((file, idx) => (
-                                  <div className="cit-file-item" key={idx}>
-                                    <span>{file.name}</span>
-                                    <button className="cit-file-remove" onClick={() => removeAttachment(idx)}><Trash2 size={14} /></button>
+                                  <div className="cit-file-item" key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '6px', marginBottom: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                    <span style={{ fontSize: '13px', color: '#0f172a' }}>{file.name}</span>
+                                    <button className="cit-file-remove" type="button" onClick={() => removeAttachment(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={14} /></button>
                                   </div>
                                 ))}
                               </div>
@@ -1606,7 +1793,7 @@ const Assignment = ({ userRole, onLogout }) => {
                       borderTop: '1px solid #e2e8f0'
                     }}>
                       <button type="button" className="cc-btn primary" onClick={handleAssignClick} style={{ background: '#10b981', borderColor: '#10b981', color: 'white', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Save size={14} /> Assign
+                        <Save size={14} /> {editId ? 'Update Assign' : 'Assign'}
                       </button>
                       <button type="button" className="cc-btn primary" onClick={() => setView("preview")} style={{ background: '#3b82f6', borderColor: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Eye size={14} /> Preview Task
@@ -1649,11 +1836,10 @@ const Assignment = ({ userRole, onLogout }) => {
                       type="button"
                       className="cc-nav-view-btn"
                       onClick={() => {
-                        setView("list");
-                        handleResetForm();
+                        setView("form");
                       }}
                     >
-                      <ChevronLeft size={15} /> Back to Task List
+                      <ChevronLeft size={15} /> Back to Form
                     </button>
                   </div>
 
@@ -1670,7 +1856,7 @@ const Assignment = ({ userRole, onLogout }) => {
                         </div>
                         <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '8px 0' }}>
                           <span style={{ fontWeight: '600', color: '#475569', width: '140px', flexShrink: 0 }}>Priority</span>
-                          <span style={{ color: priority === 'High' ? '#ef4444' : priority === 'Medium' ? '#eab308' : priority === 'Normal' ? '#3b82f6' : '#22c55e', fontWeight: 600 }}>{priority}</span>
+                          <span style={{ color: priority === 'High' || priority === 'Critical' ? '#ef4444' : priority === 'Medium' ? '#eab308' : priority === 'Normal' ? '#3b82f6' : '#22c55e', fontWeight: 600 }}>{priority}</span>
                         </div>
                         <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '8px 0' }}>
                           <span style={{ fontWeight: '600', color: '#475569', width: '140px', flexShrink: 0 }}>Status</span>
@@ -1725,7 +1911,11 @@ const Assignment = ({ userRole, onLogout }) => {
                         </div>
                         <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '8px 0' }}>
                           <span style={{ fontWeight: '600', color: '#475569', width: '140px', flexShrink: 0 }}>Attachments</span>
-                          <span style={{ color: '#0f172a' }}>{attachments.length > 0 ? attachments.map(f => f.name).join(", ") : "No attachments"}</span>
+                          <span style={{ color: '#0f172a' }}>
+                            {((existingAttachments || []).length + (attachments || []).length) > 0 
+                              ? `${((existingAttachments || []).length + (attachments || []).length)} ${((existingAttachments || []).length + (attachments || []).length) === 1 ? 'Attachment' : 'Attachments'}` 
+                              : "No attachments"}
+                          </span>
                         </div>
                         <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '8px 0' }}>
                           <span style={{ fontWeight: '600', color: '#475569', width: '140px', flexShrink: 0 }}>Description</span>
@@ -1737,8 +1927,7 @@ const Assignment = ({ userRole, onLogout }) => {
                     <div style={{ marginTop: '28px', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
                       <button
                         onClick={() => {
-                          setView("list");
-                          handleResetForm();
+                          setView("form");
                         }}
                         style={{
                           padding: '8px 20px',
@@ -1753,24 +1942,26 @@ const Assignment = ({ userRole, onLogout }) => {
                       >
                         Close Preview
                       </button>
-                      <button
-                        onClick={handleAssignClick}
-                        style={{
-                          padding: '8px 20px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          background: '#2563eb',
-                          color: 'white',
-                          fontWeight: '500',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          fontSize: '14px',
-                        }}
-                      >
-                        <Plus size={16} /> {editId ? 'Update Task' : 'Create & Assignment'}
-                      </button>
+                      {!editId && (
+                        <button
+                          onClick={handleAssignClick}
+                          style={{
+                            padding: '8px 20px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            background: '#2563eb',
+                            color: 'white',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '14px',
+                          }}
+                        >
+                          <Plus size={16} /> Create & Assignment
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

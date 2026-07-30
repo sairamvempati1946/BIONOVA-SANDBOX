@@ -21,8 +21,8 @@ const getTaskDisplayStatus = (t) => {
   const rawSts = (t.taskSts || t.tasksts || "DRAFT").toUpperCase().trim();
   const subSts = (t.subStatus || t.substatus || "").trim();
 
-  if (rawSts === "COMPLETED") {
-    return "Completed";
+  if (rawSts === "COMPLETED" || rawSts === "CLOSED") {
+    return "Closed";
   }
   if (rawSts === "HOLD") {
     return "Open";
@@ -57,7 +57,7 @@ const UserTaskBoard = ({ userRole, onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProject, setSelectedProject] = useState('All');
   const [selectedTask, setSelectedTask] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all'); // 'all', 'todo', 'overdue', 'inProgress', 'underReview', 'completed'
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -86,7 +86,6 @@ const UserTaskBoard = ({ userRole, onLogout }) => {
 
   // ---------- Data fetching logic ----------
   const loadTasks = async () => {
-    setLoading(true);
     try {
       // Fetch all required data in parallel
       const [projectsData, milestonesData, tasksData, indTasksData, profileRes, employeesData] = await Promise.all([
@@ -223,7 +222,7 @@ const UserTaskBoard = ({ userRole, onLogout }) => {
       // Group by status
       const todo = [], overdue = [], inProgress = [], underReview = [], completed = [];
       allMapped.forEach(task => {
-        if (task.status === "Completed") completed.push(task);
+        if (task.status === "Closed" || task.status === "Completed") completed.push(task);
         else if (task.status === "Under Review") underReview.push(task);
         else if (task.status === "Overdue") overdue.push(task);
         else if (task.status === "In Progress") inProgress.push(task);
@@ -281,7 +280,7 @@ const UserTaskBoard = ({ userRole, onLogout }) => {
 
   // Render a task card
   const renderCard = (task, type) => {
-    const isCompleted = task.status === "Completed";
+    const isCompleted = task.status === "Closed" || task.status === "Completed";
     return (
       <div className="utb-card" key={task.id}>
         <div className="utb-card-top">
@@ -377,7 +376,7 @@ const UserTaskBoard = ({ userRole, onLogout }) => {
                   { key: 'overdue', label: 'Overdue', icon: AlertCircle, color: '#ef4444', count: stats.overdue, bg: '#fef2f2', activeBg: '#fee2e2', border: '#fee2e2', activeBorder: '#ef4444' },
                   { key: 'inProgress', label: 'In Progress', icon: Loader, color: '#f59e0b', count: stats.inProgress, bg: '#fffbeb', activeBg: '#fef3c7', border: '#fef3c7', activeBorder: '#f59e0b' },
                   { key: 'underReview', label: 'Under Review', icon: Eye, color: '#a855f7', count: stats.underReview, bg: '#faf5ff', activeBg: '#f3e8ff', border: '#f3e8ff', activeBorder: '#a855f7' },
-                  { key: 'completed', label: 'Completed', icon: CheckCircle2, color: '#22c55e', count: stats.completed, bg: '#f0fdf4', activeBg: '#bbf7d0', border: '#bbf7d0', activeBorder: '#22c55e' },
+                  { key: 'completed', label: 'Closed', icon: CheckCircle2, color: '#22c55e', count: stats.completed, bg: '#f0fdf4', activeBg: '#bbf7d0', border: '#bbf7d0', activeBorder: '#22c55e' },
                 ].map((item) => (
                   <div
                     key={item.key}
@@ -473,7 +472,7 @@ const UserTaskBoard = ({ userRole, onLogout }) => {
                 {shouldShowColumn('completed') && (
                   <div className="utb-column completed">
                     <div className="utb-col-header">
-                      <h3 className="utb-col-title">Completed</h3>
+                      <h3 className="utb-col-title">Closed</h3>
                       <span className="utb-col-count">{filterTasks(tasks.completed).length}</span>
                     </div>
                     <div className="utb-col-content">
@@ -540,7 +539,7 @@ const UserTaskBoard = ({ userRole, onLogout }) => {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     {selectedTask.due && <div>Due: {selectedTask.due}</div>}
                     {selectedTask.submittedOn && <div>Submitted: {selectedTask.submittedOn}</div>}
-                    {selectedTask.completedOn && <div>Completed: {selectedTask.completedOn}</div>}
+                    {selectedTask.completedOn && <div>Closed: {selectedTask.completedOn}</div>}
                   </div>
                 </div>
               )}

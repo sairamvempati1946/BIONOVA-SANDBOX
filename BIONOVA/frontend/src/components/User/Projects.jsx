@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Search, ArrowLeft, ChevronLeft, ChevronRight,
   ChevronDown, Calendar, Clock, CheckCircle2, BarChart2,
@@ -25,6 +26,35 @@ const PipelineProgress = ({ pct, color = "#10b981" }) => {
   );
 };
 
+// Circular Progress Bar
+const CircularProgress = ({ pct, color = "#10b981", size = 44, strokeWidth = 4 }) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (pct / 100) * circumference;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', width: size, height: size }}>
+      <svg width={size} height={size}>
+        <circle stroke="#e9ecef" fill="transparent" strokeWidth={strokeWidth} r={radius} cx={size/2} cy={size/2} />
+        <circle 
+          stroke={color} 
+          fill="transparent" 
+          strokeWidth={strokeWidth} 
+          strokeDasharray={circumference + ' ' + circumference} 
+          style={{ strokeDashoffset: offset, transition: 'stroke-dashoffset 0.5s ease-in-out' }} 
+          r={radius} 
+          cx={size/2} 
+          cy={size/2} 
+          strokeLinecap="round" 
+          transform={`rotate(-90 ${size/2} ${size/2})`} 
+        />
+      </svg>
+      <div style={{ position: 'absolute', fontSize: '11px', fontWeight: 700, color: '#0d1126' }}>
+        {pct}%
+      </div>
+    </div>
+  );
+};
+
 import { safeFetch } from "../../utils/api";
 
 const getLoggedInUser = () => {
@@ -41,6 +71,7 @@ const getLoggedInUser = () => {
 const TABS = ["Overview", "Milestones & Tasks", "Gantt Chart", "Documents"];
 
 const MyProjects = ({ userRole, onLogout }) => {
+  const location = useLocation();
   const [selectedProject, setSelectedProject] = useState(null);
   const [activeTab, setActiveTab] = useState("Overview");
   const [searchQuery, setSearchQuery] = useState("");
@@ -122,7 +153,10 @@ const MyProjects = ({ userRole, onLogout }) => {
 
           // User-specific counts
           const totalTasksCount = projTasks.length;
-          const completedTasksCount = projTasks.filter(t => (t.taskSts || t.tasksts || "").toUpperCase() === 'COMPLETED').length;
+          const completedTasksCount = projTasks.filter(t => {
+            const s = (t.taskSts || t.tasksts || "").toUpperCase();
+            return s === 'COMPLETED' || s === 'CLOSED';
+          }).length;
           const wipTasksCount = projTasks.filter(t => {
             const s = (t.taskSts || t.tasksts || "").toUpperCase();
             return s === 'WIP' || s === 'IN_PROGRESS';
@@ -144,7 +178,7 @@ const MyProjects = ({ userRole, onLogout }) => {
             );
           } else {
             const extractProgress = (obj) => {
-              if (obj.status && obj.status.toUpperCase() === 'COMPLETED') return 100;
+              if (obj.status && (obj.status.toUpperCase() === 'COMPLETED' || obj.status.toUpperCase() === 'CLOSED')) return 100;
               const keys = ['progress', 'completionPercentage', 'completion', 'percentage', 'progressPercent', 'percentComplete'];
               for (const key of keys) {
                 if (obj[key] !== undefined && obj[key] !== null) {
@@ -170,6 +204,7 @@ const MyProjects = ({ userRole, onLogout }) => {
             role: profRes?.firstName ? `${profRes.firstName} ${profRes.lastName || ''}` : "Team Member",
             tasksAssigned: totalTasksCount > 0 ? totalTasksCount : (dashP.tasksAssigned || 0),
             openTasks: openTasksCount > 0 ? openTasksCount : 0,
+            closedTasks: completedTasksCount > 0 ? completedTasksCount : 0,
             status: (proj.prjSts || proj.prjsts || dashP.status || "LIVE").toUpperCase(),
             progress: progressPct,
             image: dashP.logo || proj.logo || null,
@@ -207,6 +242,13 @@ const MyProjects = ({ userRole, onLogout }) => {
         });
 
         setProjects(mapped);
+        if (location.state && location.state.selectedProjectId) {
+          const targetId = String(location.state.selectedProjectId);
+          const targetProject = mapped.find(p => String(p.id) === targetId || String(p.prjId) === targetId);
+          if (targetProject) {
+            setSelectedProject(targetProject);
+          }
+        }
       } catch (err) {
         console.error("Error fetching projects data:", err);
       } finally {
@@ -331,8 +373,8 @@ const MyProjects = ({ userRole, onLogout }) => {
                             }}>{proj.priority}</span>
                           </div>
                         </div>
-                        <div className="mp-card-circle" style={{ flexShrink: 0, width: '100px' }}>
-                          <PipelineProgress pct={proj.progress} color={progressColor(proj.progress)} />
+                        <div className="mp-card-circle" style={{ flexShrink: 0, display: 'flex', justifyContent: 'flex-end', width: '100px' }}>
+                          <CircularProgress pct={proj.progress} color={progressColor(proj.progress)} />
                         </div>
                       </div>
                       
@@ -345,6 +387,10 @@ const MyProjects = ({ userRole, onLogout }) => {
                           <div className="mp-card-stat" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                             <span className="mp-stat-label" style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Open</span>
                             <span className="mp-stat-value" style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>{proj.openTasks}</span>
+                          </div>
+                          <div className="mp-card-stat" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span className="mp-stat-label" style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Closed</span>
+                            <span className="mp-stat-value" style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>{proj.closedTasks}</span>
                           </div>
                         </div>
                         <span style={{
@@ -383,7 +429,27 @@ const MyProjects = ({ userRole, onLogout }) => {
             <div className="mp-right-panel full-width">
               {/* Back + Download */}
               <div className="mp-detail-topbar">
-                <button className="mp-back-btn" onClick={() => setSelectedProject(null)}>
+                <button 
+                  className="mp-back-btn" 
+                  onClick={() => setSelectedProject(null)}
+                  style={{
+                    backgroundColor: '#195dfa',
+                    color: '#ffffff',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(25, 93, 250, 0.15)',
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+                  onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+                >
                   <ArrowLeft size={16} /> Back to Projects
                 </button>
               </div>
@@ -487,11 +553,12 @@ const MyProjects = ({ userRole, onLogout }) => {
               )}
               {activeTab === "Gantt Chart" && (
                 <div style={{
-                  overflowX: 'auto',
-                  overflowY: 'hidden',
                   borderRadius: '12px',
                   border: '1px solid #e9ecef',
-                  background: '#fff'
+                  background: '#fff',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  overflow: 'hidden',
                 }}>
                   <ProjectGanttChart project={selectedProject} userRole="user" />
                 </div>

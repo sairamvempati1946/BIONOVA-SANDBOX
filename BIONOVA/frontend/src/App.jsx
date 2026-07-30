@@ -34,9 +34,13 @@ import AllProjectGanttChart from "./components/Projectmanager/AllProjectGanttCha
 
 const AppContent = () => {
   const navigate = useNavigate();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState("user");
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem("isLoggedIn") === "true" || sessionStorage.getItem("isLoggedIn") === "true";
+  });
+  const [loading, setLoading] = useState(false);
+  const [userRole, setUserRole] = useState(() => {
+    return localStorage.getItem("userRole") || sessionStorage.getItem("userRole") || "user";
+  });
 
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true" || sessionStorage.getItem("isLoggedIn") === "true";

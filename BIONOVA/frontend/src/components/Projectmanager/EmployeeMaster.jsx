@@ -28,7 +28,9 @@ import {
   Briefcase,
   Upload,
   CheckCircle2,
-  FileText
+  AlertCircle,
+  FileText,
+  CheckSquare
 } from "lucide-react";
 import Sidebar from "../Sidebar.jsx";
 import Header from "../Header.jsx";
@@ -206,6 +208,20 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isViewing, setIsViewing] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [assignments, setAssignments] = useState([]);
+  const [liveTasks, setLiveTasks] = useState([]);
+  const [activeOverviewTab, setActiveOverviewTab] = useState(null);
+
+  useEffect(() => {
+    fetch(`${apiBaseUrl}/api/assignments`, { headers: getAuthHeaders() })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setAssignments(data))
+      .catch(err => console.error("Error fetching assignments:", err));
+    fetch(`${apiBaseUrl}/api/task-live`, { headers: getAuthHeaders() })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setLiveTasks(data))
+      .catch(err => console.error("Error fetching live tasks:", err));
+  }, []);
   const [photo, setPhoto] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -273,6 +289,36 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
     employmentType: "",
     role: "user"
   });
+
+  const generateEmployeeCode = (empList = employees) => {
+    let maxNum = 0;
+    if (Array.isArray(empList)) {
+      empList.forEach(e => {
+        const code = e.empCode || e.employeeCode || "";
+        const match = code.match(/^EMP-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      });
+    }
+    return `EMP-${String(maxNum + 1).padStart(3, '0')}`;
+  };
+
+  const generateDesignationCode = (dList = designations) => {
+    let maxNum = 0;
+    if (Array.isArray(dList)) {
+      dList.forEach(d => {
+        const code = d.desigCd || d.code || d.designationCode || "";
+        const match = code.match(/^DESG-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      });
+    }
+    return `DESG-${String(maxNum + 1).padStart(3, '0')}`;
+  };
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -354,10 +400,16 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
             employmentType: displayEmpTyp,
             designation: resolvedDesignation,
             reportingManager: repManagerName,
-            workingFor: emp.pltId ? "plant" : "company"  // <-- NEW: determine workingFor
+            workingFor: emp.pltId ? "plant" : "company"
           };
         });
         setEmployees(mappedEmps);
+        setForm(prev => {
+          if (!prev.employeeCode || /^EMP-\d+$/i.test(prev.employeeCode)) {
+            return { ...prev, employeeCode: generateEmployeeCode(mappedEmps) };
+          }
+          return prev;
+        });
       }
 
       setCompanies(coyData);
@@ -432,6 +484,7 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
     }
     // Check if user clicked "+ Create Designation"
     if (name === "designation" && value === "CREATE_NEW") {
+      setDesigForm({ code: generateDesignationCode(designations), name: "", description: "" });
       setShowDesigModal(true);
       setForm((prev) => ({ ...prev, designation: "" }));
       return;
@@ -692,9 +745,9 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
   };
 
   // Reset Employee Form
-  const handleReset = () => {
+  const handleReset = (empList = employees) => {
     setForm({
-      employeeCode: "",
+      employeeCode: generateEmployeeCode(empList),
       firstName: "",
       lastName: "",
       gender: "",
@@ -1252,7 +1305,7 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
                 <div style={{ padding: '24px' }}>
                 {isViewing ? (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {/* Photo Row (Optional: Only if photo exists) */}
+                    {/* Photo Row & Header */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: '32px' }}>
                       <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#f1f5f9', overflow: 'hidden', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {form.photoPath || photo ? (

@@ -128,7 +128,7 @@ public class TaskLiveController {
 
     private void populateReviewerAndApprover(TaskLive task) {
         if (task == null) return;
-        List<com.bionova.entity.ProcessConfig> configs = processConfigRepository.findByTaskIdAndIsLiveOrderByOrdrIdAsc(task.getTaskId(), true);
+        List<com.bionova.entity.ProcessConfig> configs = processConfigRepository.findByTaskIdOrderByOrdrIdAsc(task.getTaskId());
         for (com.bionova.entity.ProcessConfig pc : configs) {
             if (pc.getOrdrId() == 1) {
                 task.setReviewer(pc.getEmpId());
@@ -149,9 +149,51 @@ public class TaskLiveController {
     }
 
     private void populateReviewerAndApprover(List<TaskLive> tasks) {
-        if (tasks == null) return;
+        if (tasks == null || tasks.isEmpty()) return;
+
+        java.util.Set<Long> empIds = new java.util.HashSet<>();
+        java.util.List<Long> taskIds = new java.util.ArrayList<>();
+
+        for (TaskLive t : tasks) {
+            if (t.getEmpId() != null) empIds.add(t.getEmpId());
+            if (t.getTaskId() != null) taskIds.add(t.getTaskId());
+        }
+
+        java.util.List<com.bionova.entity.ProcessConfig> allConfigs = taskIds.isEmpty()
+                ? java.util.Collections.emptyList()
+                : processConfigRepository.findByTaskIdInOrderByOrdrIdAsc(taskIds);
+
+        for (com.bionova.entity.ProcessConfig pc : allConfigs) {
+            if (pc.getEmpId() != null) empIds.add(pc.getEmpId());
+        }
+
+        java.util.Map<Long, String> empNameMap = empIds.isEmpty() ? java.util.Collections.emptyMap() :
+                employeeRepository.findAllById(empIds).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Employee::getEmpId,
+                        e -> ((e.getFirstName() != null ? e.getFirstName() : "") + " " + (e.getLastName() != null ? e.getLastName() : "")).trim(),
+                        (v1, v2) -> v1
+                ));
+
+        java.util.Map<Long, java.util.List<com.bionova.entity.ProcessConfig>> configMap = allConfigs.stream()
+                .filter(pc -> pc.getTaskId() != null)
+                .collect(java.util.stream.Collectors.groupingBy(com.bionova.entity.ProcessConfig::getTaskId));
+
         for (TaskLive task : tasks) {
-            populateReviewerAndApprover(task);
+            java.util.List<com.bionova.entity.ProcessConfig> configs = configMap.getOrDefault(task.getTaskId(), java.util.Collections.emptyList());
+            for (com.bionova.entity.ProcessConfig pc : configs) {
+                if (pc.getOrdrId() == 1) {
+                    task.setReviewer(pc.getEmpId());
+                    if (pc.getEmpId() != null) {
+                        task.setReviewerNm(empNameMap.get(pc.getEmpId()));
+                    }
+                } else if (pc.getOrdrId() == 2) {
+                    task.setApprover(pc.getEmpId());
+                    if (pc.getEmpId() != null) {
+                        task.setApproverNm(empNameMap.get(pc.getEmpId()));
+                    }
+                }
+            }
         }
     }
 
@@ -332,9 +374,18 @@ public class TaskLiveController {
         if (details.getTaskSts() != null) {
             task.setTaskSts(details.getTaskSts());
         }
+        if (details.getSubStatus() != null) {
+            task.setSubStatus(details.getSubStatus());
+        }
 
-        TaskLive saved = taskLiveRepository.save(task);
-        projectStatusCascadeService.cascadeStatusFromTask(id);
+        TaskLive saved;
+        if ("REWORK".equalsIgnoreCase(details.getPrcsYesActn()) || "Rework".equalsIgnoreCase(details.getSubStatus())) {
+            TaskLive reworkTarget = projectStatusCascadeService.routeReworkToPreviousMilestoneTask(id, details.getMId());
+            saved = reworkTarget != null ? reworkTarget : taskLiveRepository.save(task);
+        } else {
+            saved = taskLiveRepository.save(task);
+            projectStatusCascadeService.cascadeStatusFromTask(id);
+        }
 
         MilestoneLive milestone = milestoneLiveRepository.findById(saved.getMId())
                 .orElseThrow(() -> new RuntimeException("Milestone not found with ID: " + saved.getMId()));

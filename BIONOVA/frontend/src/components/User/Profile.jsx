@@ -328,6 +328,13 @@ const Profile = ({ userRole, onLogout }) => {
       ? getPlantName(profile.pltId) 
       : (profile.coyId ? getCompanyName(profile.coyId) : "N/A"),
     department: profile.deptId ? getDeptName(profile.deptId) : "N/A",
+    employeeType: (function() {
+      const et = profile.empTyp || profile.empType || profile.employeeType || "";
+      if (et === "FTE") return "Full Time Employee (FTE)";
+      if (et === "CON") return "Contract Employee";
+      if (et === "RET") return "Retainer";
+      return et || "N/A";
+    })(),
     role: profile.role || "N/A",
     bloodGroup: profile.bldGrp || profile.bloodGroup || "N/A",
     reportingManager: profile.repManId ? getManagerName(profile.repManId) : "None",
@@ -341,6 +348,7 @@ const Profile = ({ userRole, onLogout }) => {
     mobileNumber: "Loading...",
     companyName: "Loading...",
     department: "Loading...",
+    employeeType: "Loading...",
     role: "Loading...",
     bloodGroup: "Loading...",
     reportingManager: "Loading...",
@@ -457,6 +465,12 @@ const Profile = ({ userRole, onLogout }) => {
                     <div className="pf-detail-label"><Briefcase size={16} />Department</div>
                     <span className="pf-detail-separator">:</span>
                     <div className="pf-detail-value">{profileDetails.department}</div>
+                  </div>
+
+                  <div className="pf-detail-row">
+                    <div className="pf-detail-label"><Briefcase size={16} />Employee Type</div>
+                    <span className="pf-detail-separator">:</span>
+                    <div className="pf-detail-value">{profileDetails.employeeType}</div>
                   </div>
 
                   <div className="pf-detail-row">

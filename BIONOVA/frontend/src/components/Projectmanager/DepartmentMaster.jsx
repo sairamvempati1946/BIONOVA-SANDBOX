@@ -17,7 +17,11 @@ import {
   Bell,
   MoreVertical,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  Users,
+  Factory,
+  Briefcase,
+  Building2
 } from "lucide-react";
 import Sidebar from "../Sidebar.jsx";
 import Header from "../Header.jsx";
@@ -34,6 +38,21 @@ const getAuthHeaders = () => ({
 const DepartmentCreation = ({ userRole, onLogout }) => {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const generateDepartmentCode = (dList = departments) => {
+    let maxNum = 0;
+    if (Array.isArray(dList)) {
+      dList.forEach(d => {
+        const code = d.deptCd || d.code || d.deptCode || "";
+        const match = code.match(/^DEPT-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      });
+    }
+    return `DEPT-${String(maxNum + 1).padStart(3, '0')}`;
+  };
 
   const fetchDepartments = async () => {
     setLoading(true);
@@ -52,6 +71,12 @@ const DepartmentCreation = ({ userRole, onLogout }) => {
           employeesCount: 0
         }));
         setDepartments(mapped);
+        setForm(prev => {
+          if (!prev.code || /^DEPT-\d+$/i.test(prev.code)) {
+            return { ...prev, code: generateDepartmentCode(mapped) };
+          }
+          return prev;
+        });
       }
     } catch (err) {
       console.error("Error fetching departments:", err);
@@ -69,6 +94,50 @@ const DepartmentCreation = ({ userRole, onLogout }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isViewing, setIsViewing] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [companies, setCompanies] = useState([]);
+  const [activeOverviewTab, setActiveOverviewTab] = useState(null);
+
+  const getDepartmentEmployees = (deptId, deptName) => {
+    if (!deptId && !deptName) return [];
+    const normalizedDeptName = deptName ? String(deptName).trim().toLowerCase() : '';
+
+    return employees.filter(e => {
+      const eDeptId = e.deptId || e.department;
+      if (eDeptId && Number(eDeptId) === Number(deptId)) return true;
+
+      const eDeptNm = e.deptNm || e.departmentName || e.deptName || '';
+      if (normalizedDeptName && eDeptNm && String(eDeptNm).trim().toLowerCase() === normalizedDeptName) return true;
+
+      return false;
+    });
+  };
+
+  const getDepartmentCompanies = (deptId, deptName) => {
+    const deptEmps = getDepartmentEmployees(deptId, deptName);
+    const coyIds = new Set();
+    deptEmps.forEach(e => {
+      const cId = e.coyId || e.companyId;
+      if (cId) coyIds.add(Number(cId));
+    });
+
+    if (coyIds.size === 0) {
+      return companies;
+    }
+
+    return companies.filter(c => coyIds.has(Number(c.coyId || c.id)));
+  };
+
+  useEffect(() => {
+    fetch(`${apiBaseUrl}/api/employees`, { headers: getAuthHeaders() })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setEmployees(data))
+      .catch(err => console.error("Error fetching employees:", err));
+    fetch(`${apiBaseUrl}/api/companies`, { headers: getAuthHeaders() })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setCompanies(data))
+      .catch(err => console.error("Error fetching companies:", err));
+  }, []);
 
   // Form State
   const [form, setForm] = useState({
@@ -117,8 +186,8 @@ const DepartmentCreation = ({ userRole, onLogout }) => {
     setForm(prev => ({ ...prev, status: e.target.checked ? "Active" : "Inactive" }));
   };
 
-  const handleReset = () => {
-    setForm({ code: "", name: "", description: "", status: "Active" });
+  const handleReset = (dList = departments) => {
+    setForm({ code: generateDepartmentCode(dList), name: "", description: "", status: "Active" });
     setIsViewing(false);
   };
 
@@ -435,6 +504,155 @@ const DepartmentCreation = ({ userRole, onLogout }) => {
 
                 {isViewing ? (
                   <div style={{ padding: '24px' }}>
+                    {/* Department Overview Section */}
+                    <div style={{ 
+                      marginBottom: '32px', 
+                      backgroundColor: '#ffffff', 
+                      border: '1px solid #e2e8f0', 
+                      borderRadius: '12px', 
+                      padding: '24px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                    }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', marginBottom: '4px', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Briefcase size={18} style={{ color: '#ea580c' }} />
+                        Department Overview
+                      </h3>
+                      <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px', marginTop: 0 }}>
+                        Click on any card below to view its corresponding list details.
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
+                        {/* Card 1: Employees */}
+                        <div 
+                          onClick={() => setActiveOverviewTab(activeOverviewTab === 'employees' ? null : 'employees')}
+                          style={{ 
+                            background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)', 
+                            border: activeOverviewTab === 'employees' ? '2px solid #7c3aed' : '1px solid #e9d5ff', 
+                            borderRadius: '12px', 
+                            padding: '20px', 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            position: 'relative', 
+                            overflow: 'hidden',
+                            cursor: 'pointer',
+                            transform: activeOverviewTab === 'employees' ? 'scale(1.02)' : 'none',
+                            boxShadow: activeOverviewTab === 'employees' ? '0 4px 12px rgba(124,58,237,0.15)' : 'none'
+                          }}
+                        >
+                          <span style={{ fontSize: '12px', fontWeight: '600', color: '#6b21a8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Employees</span>
+                          <strong style={{ fontSize: '28px', color: '#581c87', marginTop: '8px', zIndex: 1 }}>
+                            {getDepartmentEmployees(editingId, form.name).length}
+                          </strong>
+                        </div>
+                        {/* Card 2: Companies */}
+                        <div 
+                          onClick={() => setActiveOverviewTab(activeOverviewTab === 'companies' ? null : 'companies')}
+                          style={{ 
+                            background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)', 
+                            border: activeOverviewTab === 'companies' ? '2px solid #0d9488' : '1px solid #99f6e4', 
+                            borderRadius: '12px', 
+                            padding: '20px', 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            position: 'relative', 
+                            overflow: 'hidden',
+                            cursor: 'pointer',
+                            transform: activeOverviewTab === 'companies' ? 'scale(1.02)' : 'none',
+                            boxShadow: activeOverviewTab === 'companies' ? '0 4px 12px rgba(13,148,136,0.15)' : 'none'
+                          }}
+                        >
+                          <span style={{ fontSize: '12px', fontWeight: '600', color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Companies</span>
+                          <strong style={{ fontSize: '28px', color: '#115e59', marginTop: '8px', zIndex: 1 }}>
+                            {getDepartmentCompanies(editingId, form.name).length}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Interactive Overview Detail List Container */}
+                    {activeOverviewTab && (
+                      <div style={{ 
+                        marginBottom: '32px', 
+                        backgroundColor: '#f8fafc', 
+                        border: '1px solid #e2e8f0', 
+                        borderRadius: '12px', 
+                        padding: '20px',
+                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                          <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', margin: 0, textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {activeOverviewTab === 'employees' && <Users size={16} style={{ color: '#7c3aed' }} />}
+                            {activeOverviewTab === 'companies' && <Building2 size={16} style={{ color: '#0d9488' }} />}
+                            Associated {activeOverviewTab} List
+                          </h4>
+                          <button 
+                            type="button" 
+                            onClick={() => setActiveOverviewTab(null)} 
+                            style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+                          >
+                            Close Table
+                          </button>
+                        </div>
+                        
+                        <div style={{ overflowX: 'auto', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                            <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                              {activeOverviewTab === 'employees' && (
+                                <tr>
+                                  <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>S.NO</th>
+                                  <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Employee Code</th>
+                                  <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Employee Name</th>
+                                  <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Designation</th>
+                                  <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Email</th>
+                                </tr>
+                              )}
+                              {activeOverviewTab === 'companies' && (
+                                <tr>
+                                  <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>S.NO</th>
+                                  <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Company Code</th>
+                                  <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Company Name</th>
+                                  <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>CIN Number</th>
+                                </tr>
+                              )}
+                            </thead>
+                            <tbody>
+                              {activeOverviewTab === 'employees' && (
+                                getDepartmentEmployees(editingId, form.name).length > 0 ? (
+                                  getDepartmentEmployees(editingId, form.name).map((e, idx) => (
+                                    <tr key={e.empId || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '10px 12px', color: '#475569' }}>{idx + 1}</td>
+                                      <td style={{ padding: '10px 12px', fontWeight: '600', color: '#7c3aed' }}>{e.empCode || e.employeeCode || 'N/A'}</td>
+                                      <td style={{ padding: '10px 12px', fontWeight: '500', color: '#0f172a' }}>{e.fstNm || e.firstName} {e.lstNm || e.lastName}</td>
+                                      <td style={{ padding: '10px 12px', color: '#475569' }}>{e.designation || e.role || 'N/A'}</td>
+                                      <td style={{ padding: '10px 12px', color: '#2563eb' }}>{e.email || 'N/A'}</td>
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>No employees found for this department.</td></tr>
+                                )
+                              )}
+                              {activeOverviewTab === 'companies' && (
+                                getDepartmentCompanies(editingId, form.name).length > 0 ? (
+                                  getDepartmentCompanies(editingId, form.name).map((c, idx) => (
+                                    <tr key={c.coyId || c.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '10px 12px', color: '#475569' }}>{idx + 1}</td>
+                                      <td style={{ padding: '10px 12px', fontWeight: '600', color: '#0d9488' }}>{c.coyCd || c.companyCode || 'N/A'}</td>
+                                      <td style={{ padding: '10px 12px', fontWeight: '500', color: '#0f172a' }}>{c.coyNm || c.companyName || 'N/A'}</td>
+                                      <td style={{ padding: '10px 12px', color: '#475569' }}>{c.cin || c.cinNo || c.cinNumber || 'N/A'}</td>
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr><td colSpan={4} style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>No companies found.</td></tr>
+                                )
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b', marginBottom: '16px', borderTop: '1px solid #e2e8f0', paddingTop: '24px' }}>
+                      Department Details
+                    </h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', padding: '12px 0', borderBottom: '1px dashed #e2e8f0' }}>
                         <span style={{ fontSize: '13px', fontWeight: '600', color: '#64748b' }}>Department Code :</span>

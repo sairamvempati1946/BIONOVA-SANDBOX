@@ -29,6 +29,21 @@ const DesignationCreation = ({ userRole, onLogout }) => {
   const [designations, setDesignations] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const generateDesignationCode = (dList = designations) => {
+    let maxNum = 0;
+    if (Array.isArray(dList)) {
+      dList.forEach(d => {
+        const code = d.desigCd || d.code || d.designationCode || "";
+        const match = code.match(/^DESG-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      });
+    }
+    return `DESG-${String(maxNum + 1).padStart(3, '0')}`;
+  };
+
   const fetchDesignations = async () => {
     setLoading(true);
     try {
@@ -42,6 +57,12 @@ const DesignationCreation = ({ userRole, onLogout }) => {
           description: desig.desigDesc || desig.description || ""
         }));
         setDesignations(mapped);
+        setForm(prev => {
+          if (!prev.code || /^DESG-\d+$/i.test(prev.code)) {
+            return { ...prev, code: generateDesignationCode(mapped) };
+          }
+          return prev;
+        });
       }
     } catch (err) {
       console.error("Error fetching designations:", err);
@@ -101,8 +122,8 @@ const DesignationCreation = ({ userRole, onLogout }) => {
     setForm((prev) => ({ ...prev, [name]: newValue }));
   };
 
-  const handleReset = () => {
-    setForm({ code: "", name: "", description: "" });
+  const handleReset = (dList = designations) => {
+    setForm({ code: generateDesignationCode(dList), name: "", description: "" });
     setIsViewing(false);
   };
 

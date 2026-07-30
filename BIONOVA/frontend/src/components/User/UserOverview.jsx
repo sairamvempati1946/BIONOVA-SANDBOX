@@ -31,7 +31,7 @@ const DonutChart = ({ completedPct, inProgressPct, yetToStartPct, overallPct }) 
       </text>
       <text x="50%" y="60%" textAnchor="middle" dominantBaseline="middle"
         style={{ transform: "rotate(90deg)", transformOrigin: "center", fontSize: "11px", fill: "#6b7280" }}>
-        Completed
+        Closed
       </text>
     </svg>
   );
@@ -44,7 +44,8 @@ const UserOverview = ({ selectedProject }) => {
   const openCount = selectedProject.taskSummary?.openTasks || 0;
   const reviewCount = Math.max(0, total - completedCount - wipCount - openCount);
 
-  const completedPct = selectedProject.progress || 0;
+  // Progress = completed tasks / total tasks × 100 (only COMPLETED tasks count)
+  const completedPct = total > 0 ? Math.round((completedCount / total) * 100) : 0;
   const remainingPct = 100 - completedPct;
 
   let inProgressPct = 0;
@@ -84,11 +85,7 @@ const UserOverview = ({ selectedProject }) => {
           <tbody>
             <tr><td>Role</td><td>{selectedProject.role}</td></tr>
             <tr><td>Department</td><td>{selectedProject.department}</td></tr>
-            <tr><td>Reporting To</td><td>
-              <div>{selectedProject.reportingTo}</div>
-              <div style={{ fontSize: 11, color: "#6b7280" }}>Project Manager</div>
-            </td></tr>
-          </tbody>
+             </tbody>
         </table>
       </div>
 
@@ -99,7 +96,7 @@ const UserOverview = ({ selectedProject }) => {
           <DonutChart completedPct={completedPct} inProgressPct={inProgressPct} yetToStartPct={yetToStartPct} overallPct={selectedProject.progress} />
         </div>
         <div className="mp-progress-legend">
-          <div className="mp-legend-item"><span style={{ background: "#10b981" }}></span> Completed <strong style={{ color: "#10b981" }}>{completedPct}%</strong></div>
+          <div className="mp-legend-item"><span style={{ background: "#10b981" }}></span> Closed <strong style={{ color: "#10b981" }}>{completedPct}%</strong></div>
           <div className="mp-legend-item"><span style={{ background: "#3b82f6" }}></span> In Progress <strong style={{ color: "#3b82f6" }}>{inProgressPct}%</strong></div>
           <div className="mp-legend-item"><span style={{ background: "#f59e0b" }}></span> Yet to Start <strong style={{ color: "#f59e0b" }}>{yetToStartPct}%</strong></div>
         </div>
@@ -127,7 +124,7 @@ const UserOverview = ({ selectedProject }) => {
           <div className="mp-task-stat">
             <div className="mp-task-icon mp-icon-green"><CheckCircle2 size={20} /></div>
             <div className="mp-task-num">{selectedProject.taskSummary.completed}</div>
-            <div className="mp-task-label">Completed</div>
+            <div className="mp-task-label">Closed</div>
           </div>
         </div>
       </div>

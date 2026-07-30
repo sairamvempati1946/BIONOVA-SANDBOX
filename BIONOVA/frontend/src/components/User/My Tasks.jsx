@@ -15,7 +15,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  Undo,
   Undo2,
+  Redo2,
   ClipboardList,
   Layers,
   Clock,
@@ -45,16 +47,37 @@ import {
 import "../../styles/MyTasks.css";
 import { apiGet, apiPut, apiPatch, apiPost } from "../../utils/api";
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
+
 // ============================================
 // CONSTANTS - COLORS & STATUS
 // ============================================
+
+const ReassignIcon = ({ size = 16, color = "#4F46E5", className = "", style = {} }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke={color} 
+    strokeWidth="2.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+    style={{ display: "inline-block", verticalAlign: "middle", ...style }}
+  >
+    <polyline points="9 14 4 18 9 22" />
+    <path d="M4 18h11a5 5 0 0 0 0-10H8" />
+  </svg>
+);
 
 const PROGRESS_COLORS = {
   "OPEN": { bg: "#DBEAFE", color: "#2563EB", label: "OPEN" },
   "DRAFT": { bg: "#F3F4F6", color: "#9CA3AF", label: "DRAFT" },
   "WIP": { bg: "#FEF3C7", color: "#F59E0B", label: "WORK IN PROGRESS" },
   "HOLD": { bg: "#EDE9FE", color: "#7C3AED", label: "HOLD" },
-  "COMPLETED": { bg: "#DCFCE7", color: "#16A34A", label: "CLOSED" }
+  "COMPLETED": { bg: "#DCFCE7", color: "#16A34A", label: "CLOSED" },
+  "CLOSED": { bg: "#DCFCE7", color: "#16A34A", label: "CLOSED" }
 };
 
 const PRIORITY_COLORS = {
@@ -63,14 +86,18 @@ const PRIORITY_COLORS = {
   "Medium": { bg: "#FEF3C7", color: "#F59E0B" },
   "High": { bg: "#FEE2E2", color: "#EF4444" },
   "Critical": { bg: "#FEE2E2", color: "#B91C1C" },
-  "Atmost Critical": { bg: "#FEE2E2", color: "#7F1D1D" }
+  "Atmost Critical": { bg: "#FEE2E2", color: "#7F1D1D" },
+  "Rework": { bg: "#FFF7ED", color: "#F97316" },
+  "REWORK": { bg: "#FFF7ED", color: "#F97316" },
+  "Reassigned": { bg: "#EEF2FF", color: "#4F46E5" },
+  "REASSIGN": { bg: "#EEF2FF", color: "#4F46E5" }
 };
 
 const PROCESS_COLORS = {
   "PENDING_REVIEWER": { color: "#8B5CF6", icon: Eye, title: "Under Review" },
   "PENDING_APPROVER": { color: "#8B5CF6", icon: Eye, title: "Under Review" },
   "REWORK": { color: "#F97316", icon: RefreshCw, title: "Rework" },
-  "REASSIGN": { color: "#4F46E5", icon: Undo2, title: "Reassign" }
+  "REASSIGN": { color: "#4F46E5", icon: ReassignIcon, title: "Reassign" }
 };
 
 const TIME_COLORS = {
@@ -97,12 +124,16 @@ const calculateTimeStatus = (task) => {
   if (!dueDate) return { status: "On Time", color: "#3B82F6", icon: Clock, title: "On Time" };
   
   dueDate.setHours(0, 0, 0, 0);
-  
-  if (task.taskSts === "COMPLETED" && completedDate) {
-    completedDate.setHours(0, 0, 0, 0);
-    if (completedDate < dueDate) return { status: "Lead", color: "#22C55E", icon: Clock, title: "Lead" };
-    if (completedDate.getTime() === dueDate.getTime()) return { status: "On Time", color: "#3B82F6", icon: Clock, title: "On Time" };
-    if (completedDate > dueDate) return { status: "Lag", color: "#DC2626", icon: Clock, title: "Lag" };
+
+  // For closed/completed tasks — only show Lead / Lag / On Time
+  const rawSts = (task.taskSts || task.status || "").toString().toUpperCase();
+  const isClosed = rawSts === "COMPLETED" || rawSts === "CLOSED" || rawSts === "DONE";
+  if (isClosed) {
+    const refDate = completedDate ? new Date(completedDate) : today;
+    refDate.setHours(0, 0, 0, 0);
+    if (refDate < dueDate) return { status: "Lead", color: "#22C55E", icon: Clock, title: "Lead" };
+    if (refDate.getTime() === dueDate.getTime()) return { status: "On Time", color: "#3B82F6", icon: Clock, title: "On Time" };
+    return { status: "Lag", color: "#DC2626", icon: Clock, title: "Lag" };
   }
   
   if (today < dueDate) return { status: "On Time", color: "#3B82F6", icon: Clock, title: "On Time" };
@@ -123,8 +154,15 @@ const getEmployeeName = (empId, employeesList) => {
   }
   
   const emp = employeesList.find(e => {
-    const eId = e.empId || e.employeeId || e.id || e._id || e.employee_code || e.empCode;
-    return String(eId) === String(empId);
+    const target = String(empId).trim();
+    return String(e.empId).trim() === target || 
+           String(e.employeeId).trim() === target || 
+           String(e.employeeCode).trim() === target || 
+           String(e.id).trim() === target || 
+           String(e._id).trim() === target || 
+           String(e.employee_code).trim() === target || 
+           String(e.empCode).trim() === target ||
+           String(e.userId).trim() === target;
   });
   
   if (!emp) return `User ${empId}`;
@@ -165,8 +203,15 @@ const getEmployeePhoto = (empId, employeesList) => {
   if (!employeesList || employeesList.length === 0) return null;
   
   const emp = employeesList.find(e => {
-    const eId = e.empId || e.employeeId || e.id || e._id || e.employee_code || e.empCode;
-    return String(eId) === String(empId);
+    const target = String(empId).trim();
+    return String(e.empId).trim() === target || 
+           String(e.employeeId).trim() === target || 
+           String(e.employeeCode).trim() === target || 
+           String(e.id).trim() === target || 
+           String(e._id).trim() === target || 
+           String(e.employee_code).trim() === target || 
+           String(e.empCode).trim() === target ||
+           String(e.userId).trim() === target;
   });
   if (!emp) return null;
   
@@ -252,7 +297,7 @@ const getActionButton = (task, currentUserEmpId) => {
     normalizedProgress = "WORK_IN_PROGRESS";
   }
   if (progress === "OPEN") normalizedProgress = "OPEN";
-  if (progress === "COMPLETED") normalizedProgress = "COMPLETED";
+  if (progress === "COMPLETED" || progress === "CLOSED") normalizedProgress = "COMPLETED";
   if (progress === "HOLD") normalizedProgress = "HOLD";
   if (progress === "DRAFT") normalizedProgress = "OPEN";
   
@@ -299,9 +344,9 @@ const getActionButton = (task, currentUserEmpId) => {
       return { label: "Update", action: "update", variant: "warning" };
     }
     
-    // WORK_IN_PROGRESS with REASSIGN -> View
+    // WORK_IN_PROGRESS with REASSIGN -> Update
     if (normalizedProgress === "WORK_IN_PROGRESS" && normalizedProcess === "REASSIGN") {
-      return { label: "View", action: "view", variant: "secondary" };
+      return { label: "Update", action: "update", variant: "warning" };
     }
     
     // HOLD -> View
@@ -359,9 +404,19 @@ const getProcessIcon = (process) => {
 };
 
 const getProgressBadge = (status) => {
-  const normalizedStatus = (status || "OPEN").toUpperCase();
-  const progressData = PROGRESS_COLORS[normalizedStatus];
-  if (!progressData) return { label: "OPEN", bg: "#DBEAFE", color: "#2563EB" };
+  let normalizedStatus = "OPEN";
+  if (typeof status === 'object' && status !== null) {
+    normalizedStatus = String(status.statusNm || status.status_nm || status.statusId || "OPEN").toUpperCase();
+    if (status.statusId === 4 || status.status_id === 4) normalizedStatus = "CLOSED";
+  } else if (typeof status === 'string') {
+    normalizedStatus = status.toUpperCase();
+  } else if (typeof status === 'number') {
+    if (status === 4) normalizedStatus = "CLOSED";
+    if (status === 3) normalizedStatus = "WIP";
+    if (status === 2) normalizedStatus = "OPEN";
+    if (status === 1) normalizedStatus = "DRAFT";
+  }
+  const progressData = PROGRESS_COLORS[normalizedStatus] || PROGRESS_COLORS["OPEN"];
   return progressData;
 };
 
@@ -392,6 +447,7 @@ const MyTasks = ({ userRole, onLogout }) => {
   const [updateChecklist, setUpdateChecklist] = useState([]);
   const [updateRemarks, setUpdateRemarks] = useState("");
   const [showDenyForm, setShowDenyForm] = useState(false);
+  const [isRaiseRequest, setIsRaiseRequest] = useState(false);
   const [denyData, setDenyData] = useState({ type: "", reason: "", milestone: "", deliverable: "", impact: "Medium" });
 
   // ============================================
@@ -409,55 +465,52 @@ const MyTasks = ({ userRole, onLogout }) => {
       let userEmail = null;
       let adminCheck = false;
       
-      try {
-        const profileRes = await apiGet("/api/profile");
-        empId = profileRes?.empId;
-        userEmail = profileRes?.email;
-        const profileName = profileRes?.name || profileRes?.employeeName || profileRes?.fullName;
+      let employeesData = employeesList;
+      let projectsData = [];
+      let milestonesData = [];
+      let tasksData = [];
+      let indTasksData = [];
+
+      // Always fetch fresh data but use parallel requests for maximum speed
+      console.log("📡 Fetching bulk data in parallel (including profile and employees)...");
+      const [profileRes, empRes, projRes, mileRes, mileDraftRes, taskRes, indTaskRes, dashRes, myTasksApiRes] = await Promise.allSettled([
+        apiGet("/api/profile"),
+        apiGet("/api/employees/directory").catch(() => apiGet("/api/employees")),
+        apiGet("/api/project-live"),
+        apiGet("/api/milestone-live"),
+        apiGet("/api/milestone-drafts"),
+        apiGet("/api/task-live"),
+        apiGet("/api/assignments"),
+        apiGet("/api/user-dashboard"),
+        apiGet("/api/user-dashboard/my-tasks")
+      ]);
+
+      // Handle Profile
+      if (profileRes.status === 'fulfilled' && profileRes.value) {
+        empId = profileRes.value.empId;
+        userEmail = profileRes.value.email;
+        const profileName = profileRes.value.name || profileRes.value.employeeName || profileRes.value.fullName;
         if (profileName) {
           setUserName(profileName);
           sessionStorage.setItem("userName", profileName);
         }
         adminCheck = userEmail === 'vsv.vempati@gmail.com' || userEmail === 'admin@example.com' || userRole === 'admin';
-        console.log("✅ User ID:", empId, "Is Admin:", adminCheck);
-      } catch (profileErr) {
-        console.error("❌ Profile API Error:", profileErr);
-        const storedEmpId = sessionStorage.getItem("empId");
-        const storedEmail = sessionStorage.getItem("userEmail");
+      } else {
+        empId = sessionStorage.getItem("empId");
+        userEmail = sessionStorage.getItem("userEmail");
         const storedName = sessionStorage.getItem("userName");
-        if (storedEmpId) {
-          empId = storedEmpId;
-          userEmail = storedEmail;
-          if (storedName) setUserName(storedName);
-          adminCheck = storedEmail === 'vsv.vempati@gmail.com' || userRole === 'admin';
-        }
+        if (storedName) setUserName(storedName);
+        adminCheck = userEmail === 'vsv.vempati@gmail.com' || userRole === 'admin';
       }
       
       setCurrentUserEmpId(empId);
       setCurrentUserEmail(userEmail);
       setIsAdmin(adminCheck);
 
-      let employeesData = [];
-      let projectsData = [];
-      let milestonesData = [];
-      let tasksData = [];
-      let indTasksData = [];
-
-      console.log("📡 Fetching employees data...");
-      try {
-        employeesData = await apiGet("/api/employees/directory");
-        setEmployeesList(employeesData || []);
-        console.log("✅ Employees loaded:", employeesData.length);
-      } catch (err) {
-        console.warn("⚠️ Employees API Error:", err);
-        try {
-          employeesData = await apiGet("/api/employees");
-          setEmployeesList(employeesData || []);
-          console.log("✅ Employees loaded from /api/employees:", employeesData.length);
-        } catch (err2) {
-          console.warn("⚠️ Alternative employees API also failed");
-          employeesData = [];
-        }
+      // Handle Employees
+      if (empRes.status === 'fulfilled' && empRes.value) {
+        employeesData = empRes.value;
+        setEmployeesList(employeesData);
       }
 
       if (!empId && !adminCheck) {
@@ -468,40 +521,94 @@ const MyTasks = ({ userRole, onLogout }) => {
         return;
       }
 
-      console.log("📡 Fetching projects data...");
-      try {
-        projectsData = await apiGet("/api/project-live");
-        console.log("✅ Projects loaded:", projectsData.length);
-      } catch (err) {
-        console.warn("⚠️ Projects API Error:", err);
-        projectsData = [];
+      projectsData = projRes.status === 'fulfilled' && projRes.value ? projRes.value : [];
+      setProjectsList(projectsData);
+      if (projRes.status === 'rejected') console.warn("⚠️ Projects API Error:", projRes.reason);
+      else console.log("✅ Projects loaded:", projectsData.length);
+
+      const liveMiles = mileRes.status === 'fulfilled' && mileRes.value ? mileRes.value : [];
+      const draftMiles = mileDraftRes.status === 'fulfilled' && mileDraftRes.value ? mileDraftRes.value : [];
+      milestonesData = [...liveMiles, ...draftMiles];
+      setMilestonesList(milestonesData);
+      console.log("✅ Milestones loaded:", milestonesData.length);
+
+      tasksData = taskRes.status === 'fulfilled' && taskRes.value ? taskRes.value : [];
+      if (taskRes.status === 'rejected') console.error("❌ Tasks API Error:", taskRes.reason);
+      else console.log("✅ Tasks loaded:", tasksData.length);
+
+      indTasksData = indTaskRes.status === 'fulfilled' && indTaskRes.value ? indTaskRes.value : [];
+      if (indTaskRes.status === 'rejected') console.warn("⚠️ Assignments API Error:", indTaskRes.reason);
+      else console.log("✅ Individual tasks loaded:", indTasksData.length);
+      
+      if (dashRes.status === 'fulfilled' && dashRes.value?.upcomingTasks) {
+        setUpcomingTaskIds(dashRes.value.upcomingTasks.map(t => String(t.taskId || t.id)));
+      } else {
+        setUpcomingTaskIds([]);
       }
 
-      console.log("📡 Fetching milestones data...");
+      // Extract employees from all tasks to populate missing profiles (for restricted users)
       try {
-        milestonesData = await apiGet("/api/milestone-live");
-        console.log("✅ Milestones loaded:", milestonesData.length);
-      } catch (err) {
-        console.warn("⚠️ Milestones API Error:", err);
-        milestonesData = [];
-      }
+        const extractedEmployees = new Map();
+        
+        const allTasksSource = [
+          ...(dashRes.status === 'fulfilled' && dashRes.value ? [
+            ...(dashRes.value.todoList || []),
+            ...(dashRes.value.upcomingTasks || []),
+            ...(dashRes.value.completedTasks || []),
+            ...(dashRes.value.closedTasks || [])
+          ] : []),
+          ...tasksData,
+          ...indTasksData
+        ];
 
-      console.log("📡 Fetching tasks data...");
-      try {
-        tasksData = await apiGet("/api/task-live");
-        console.log("✅ Tasks loaded:", tasksData.length);
-      } catch (err) {
-        console.error("❌ Tasks API Error:", err);
-        tasksData = [];
-      }
+        allTasksSource.forEach(t => {
+          // Extract from embedded employees array
+          if (t.employees && Array.isArray(t.employees)) {
+            t.employees.forEach(e => {
+              const id = String(e.empId || e.employeeId || e.id || "");
+              if (id) {
+                extractedEmployees.set(id, {
+                  empId: id,
+                  empNm: e.fullName || e.empName || e.name || e.employeeName,
+                  profileImage: e.photoUrl || e.photo || e.profileImage || null
+                });
+              }
+            });
+          }
+          // Extract from flat fields
+          if (t.empId || t.assignedTo || t.executorId) {
+            const id = String(t.empId || t.assignedTo || t.executorId);
+            const name = t.executorName || t.empNm || t.empName || t.assignedToName || t.executorNm;
+            if (name && !extractedEmployees.has(id)) {
+              extractedEmployees.set(id, { empId: id, empNm: name, profileImage: t.executorPhoto || t.empPhoto });
+            }
+          }
+          if (t.reviewerId || t.reviewer) {
+            const id = String(t.reviewerId || t.reviewer);
+            const name = t.reviewerName || t.reviewerNm || t.revNm || t.revName;
+            if (name && !extractedEmployees.has(id)) {
+              extractedEmployees.set(id, { empId: id, empNm: name, profileImage: t.reviewerPhoto || t.revPhoto });
+            }
+          }
+          if (t.approverId || t.approver) {
+            const id = String(t.approverId || t.approver);
+            const name = t.approverName || t.approverNm || t.appNm || t.appName;
+            if (name && !extractedEmployees.has(id)) {
+              extractedEmployees.set(id, { empId: id, empNm: name, profileImage: t.approverPhoto || t.appPhoto });
+            }
+          }
+        });
 
-      console.log("📡 Fetching individual tasks data...");
-      try {
-        indTasksData = await apiGet("/api/assignments");
-        console.log("✅ Individual tasks loaded:", indTasksData.length);
-      } catch (err) {
-        console.warn("⚠️ Assignments API Error:", err);
-        indTasksData = [];
+        const existingEmpIds = new Set(employeesData.map(e => String(e.empId)));
+        const newEmployees = Array.from(extractedEmployees.values()).filter(e => !existingEmpIds.has(e.empId));
+        
+        if (newEmployees.length > 0) {
+          console.log(`➕ Extracted ${newEmployees.length} employees from tasks (Fallback)`);
+          employeesData = [...employeesData, ...newEmployees];
+          setEmployeesList(employeesData);
+        }
+      } catch (e) {
+        console.error("Error extracting employees", e);
       }
 
       if ((!tasksData || tasksData.length === 0) && (!indTasksData || indTasksData.length === 0)) {
@@ -525,6 +632,64 @@ const MyTasks = ({ userRole, onLogout }) => {
         }
       }
 
+      // Process config mapping from stored procedure get_my_tasks_data endpoint
+      const liveTaskProcessMap = new Map();
+      const indTaskProcessMap = new Map();
+
+      let myTasksDataFromSp = [];
+      if (myTasksApiRes.status === 'fulfilled' && Array.isArray(myTasksApiRes.value)) {
+        myTasksDataFromSp = myTasksApiRes.value;
+        myTasksDataFromSp.forEach(item => {
+          const raw = item.rawTask || item;
+          const tid = item.taskId || raw.taskId;
+          if (tid) {
+            if (item.isIndividual) {
+              indTaskProcessMap.set(String(tid), {
+                reviewerId: raw.reviewerId,
+                approverId: raw.approverId,
+                reviewerNm: raw.reviewerNm,
+                approverNm: raw.approverNm
+              });
+            } else {
+              liveTaskProcessMap.set(String(tid), {
+                reviewerId: raw.reviewerId,
+                approverId: raw.approverId,
+                reviewerNm: raw.reviewerNm,
+                approverNm: raw.approverNm
+              });
+            }
+          }
+        });
+      }
+
+      tasksData = tasksData.map(t => {
+        const info = liveTaskProcessMap.get(String(t.taskId || t.id));
+        if (info) {
+          return {
+            ...t,
+            reviewerId: t.reviewerId || info.reviewerId,
+            approverId: t.approverId || info.approverId,
+            reviewerName: t.reviewerName || info.reviewerNm,
+            approverName: t.approverName || info.approverNm
+          };
+        }
+        return t;
+      });
+
+      indTasksData = indTasksData.map(t => {
+        const info = indTaskProcessMap.get(String(t.empTaskId || t.taskId || t.id));
+        if (info) {
+          return {
+            ...t,
+            reviewerId: t.reviewerId || info.reviewerId,
+            approverId: t.approverId || info.approverId,
+            reviewerName: t.reviewerName || info.reviewerNm,
+            approverName: t.approverName || info.approverNm
+          };
+        }
+        return t;
+      });
+
       let filteredLiveTasks = [];
       let filteredIndTasks = [];
 
@@ -536,19 +701,19 @@ const MyTasks = ({ userRole, onLogout }) => {
         const userEmpId = String(empId);
         console.log(`🔍 Filtering tasks for user ID: ${userEmpId}`);
         
-        filteredLiveTasks = (tasksData || []).filter(task => {
+        const isUserInTask = (task) => {
           const taskEmpId = String(task.empId || task.assignedTo || task.executorId || '');
           const taskReviewerId = String(task.reviewerId || task.reviewer || '');
           const taskApproverId = String(task.approverId || task.approver || '');
-          return taskEmpId === userEmpId || taskReviewerId === userEmpId || taskApproverId === userEmpId;
-        });
+          if (taskEmpId === userEmpId || taskReviewerId === userEmpId || taskApproverId === userEmpId) return true;
+          if (Array.isArray(task.employees)) {
+            return task.employees.some(e => String(e.empId || e.id || '') === userEmpId);
+          }
+          return false;
+        };
 
-        filteredIndTasks = (indTasksData || []).filter(task => {
-          const taskEmpId = String(task.empId || task.assignedTo || task.executorId || '');
-          const taskReviewerId = String(task.reviewerId || task.reviewer || '');
-          const taskApproverId = String(task.approverId || task.approver || '');
-          return taskEmpId === userEmpId || taskReviewerId === userEmpId || taskApproverId === userEmpId;
-        });
+        filteredLiveTasks = (tasksData || []).filter(isUserInTask);
+        filteredIndTasks = (indTasksData || []).filter(isUserInTask);
 
         console.log(`✅ User tasks (Live): ${filteredLiveTasks.length} (out of ${(tasksData || []).length})`);
         console.log(`✅ User tasks (Individual): ${filteredIndTasks.length} (out of ${(indTasksData || []).length})`);
@@ -558,11 +723,47 @@ const MyTasks = ({ userRole, onLogout }) => {
       let mappedInd = filteredIndTasks.map(t => mapIndividualTask(t, employeesData || []));
       mapped = [...mapped, ...mappedInd];
 
+      // Also merge any task returned directly from get_my_tasks_data stored procedure
+      if (myTasksDataFromSp.length > 0) {
+        const spMapped = myTasksDataFromSp.map(item => {
+          const raw = item.rawTask || item;
+          const isInd = item.isIndividual || false;
+          return {
+            id: item.id || raw.taskCd || (isInd ? `IND-${raw.taskId}` : `TSK-${raw.taskId}`),
+            code: item.id || raw.taskCd || (isInd ? `IND-${raw.taskId}` : `TSK-${raw.taskId}`),
+            taskId: raw.taskId || item.taskId,
+            title: item.title || raw.taskNm,
+            name: item.title || raw.taskNm,
+            isIndividual: isInd,
+            rawStatus: item.rawStatus || raw.taskSts || item.status,
+            status: item.status || raw.taskSts,
+            progress: item.progress !== undefined ? item.progress : 0,
+            dueDate: item.dueDate || raw.endDt || "",
+            priority: item.priority || "Medium",
+            rawTask: raw
+          };
+        });
+        mapped = [...mapped, ...spMapped];
+      }
+
+      // Final strict deduplication by unique database primary ID
+      const uniqueMapped = [];
+      const seenKeys = new Set();
+      mapped.forEach(t => {
+        const idVal = t.taskId || t.id || t.empTaskId;
+        const idKey = `${t.isIndividual ? 'IND' : 'LIVE'}_${idVal}`;
+        if (idVal && !seenKeys.has(idKey)) {
+          seenKeys.add(idKey);
+          uniqueMapped.push(t);
+        }
+      });
+      mapped = uniqueMapped;
+
       mapped = mapped.map(task => {
         let progress = 0;
-        const taskSts = task.rawStatus || task.status;
+        const taskSts = String(task.rawStatus || task.status || "").toUpperCase();
         
-        if (taskSts === 'COMPLETED') {
+        if (taskSts === 'COMPLETED' || taskSts === 'CLOSED') {
           progress = 100;
         } else if (taskSts === 'WIP' || taskSts === 'IN_PROGRESS' || taskSts === 'UNDER_REVIEW') {
           progress = 50;
@@ -577,12 +778,19 @@ const MyTasks = ({ userRole, onLogout }) => {
         };
       });
 
+      mapped = mapped.filter(task => {
+        const s = String(task.rawStatus || task.status || "").toUpperCase();
+        return s !== "DRAFT";
+      });
+
       console.log(`✅ Final tasks loaded: ${mapped.length} (Loaded in ${Date.now() - startTime}ms)`);
       setTasks(mapped);
+      return mapped;
       
     } catch (err) {
       console.error("❌ Error loading tasks:", err);
       setApiError(err.message || "Failed to load tasks. Please try again.");
+      return [];
     } finally {
       setIsLoading(false);
     }
@@ -670,13 +878,54 @@ const MyTasks = ({ userRole, onLogout }) => {
     return "OPEN";
   };
 
+const formatTaskCode = (code, taskId, isIndividual) => {
+  if (code && typeof code === 'string' && code.trim() !== '') {
+    const raw = code.trim();
+    const match = raw.match(/^(TSK|INDTSK|INDKTSK|IND|INDTASK|TST|T)-?(\d+)$/i);
+    if (match) {
+      const p = match[1].toUpperCase();
+      const num = parseInt(match[2], 10);
+      if (p.startsWith('IND')) {
+        return `INDTSK-${String(num).padStart(3, '0')}`;
+      } else {
+        return `TSK-${String(num).padStart(3, '0')}`;
+      }
+    }
+    return raw.toUpperCase();
+  }
+  const prefix = isIndividual ? 'INDTSK' : 'TSK';
+  const num = parseInt(taskId, 10);
+  return `${prefix}-${String(isNaN(num) ? 1 : num).padStart(3, '0')}`;
+};
+
   const mapBackendTask = (t, projects, milestones, employees) => {
-    const milestone = milestones?.find(m => String(m.mId || m.id) === String(t.mId || t.milestoneId));
-    const project = milestone ? projects?.find(p => String(p.prjId || p.id) === String(milestone.prjId || milestone.projectId)) : null;
+    const targetMId = t.mId || t.m_id || t.drftMId || t.milestoneId || t.mid;
+    const milestoneObj = milestones?.find(m => 
+      String(m.mId || m.id || m.m_id || m.milestoneId || '') === String(targetMId || '')
+    );
+    
+    const targetPrjId = milestoneObj 
+      ? (milestoneObj.prjId || milestoneObj.projectId || milestoneObj.prj_id) 
+      : (t.prjId || t.projectId || t.prj_id);
+    const projectObj = projects?.find(p => 
+      String(p.prjId || p.id || p.prj_id || '') === String(targetPrjId || '')
+    );
+
+    const milestoneName = 
+      (milestoneObj ? (milestoneObj.mlstnTtl || milestoneObj.title || milestoneObj.name || milestoneObj.mlstn_ttl || milestoneObj.mlstnNm) : null) ||
+      t.milestoneName || t.mlstnTtl || t.milestoneTitle || t.milestone || t.mlstnNm || t.mlstn_ttl ||
+      "—";
+
+    const projectName =
+      (projectObj ? (projectObj.prjNm || projectObj.name || projectObj.prj_nm) : null) ||
+      t.projectName || t.projectCodeName || t.prjNm || t.project ||
+      "Internal";
+
+    const taskCodeFormatted = formatTaskCode(t.taskCd || t.taskCode || t.task_cd || t.code, t.taskId || t.id, false);
 
     let status = "OPEN";
-    const taskSts = t.taskSts || t.status || "OPEN";
-    if (taskSts === "COMPLETED") status = "COMPLETED";
+    const taskSts = String(t.taskSts || t.status || "OPEN").toUpperCase();
+    if (taskSts === "COMPLETED" || taskSts === "CLOSED") status = "COMPLETED";
     else if (taskSts === "WIP" || taskSts === "IN_PROGRESS") status = "WIP";
     else if (taskSts === "OPEN") status = "OPEN";
     else if (taskSts === "DRAFT") status = "DRAFT";
@@ -698,7 +947,7 @@ const MyTasks = ({ userRole, onLogout }) => {
         compareDateObj.setHours(0, 0, 0, 0);
 
         const actCmpDt = t.actCmpDt || t.actualCompletionDate || t.completedDate;
-        if (taskSts === "COMPLETED" || taskSts === "UNDER_REVIEW") {
+        if (taskSts === "COMPLETED" || taskSts === "CLOSED" || taskSts === "UNDER_REVIEW") {
           if (actCmpDt) {
             const cmpDateStr = actCmpDt.split('T')[0];
             const [cYear, cMonth, cDay] = cmpDateStr.split('-');
@@ -719,11 +968,12 @@ const MyTasks = ({ userRole, onLogout }) => {
     }
 
     return {
-      id: t.taskCd || t.taskCode || `TSK-${t.taskId || t.id}`,
-      taskId: t.taskId || t.id,
+      id: taskCodeFormatted,
+      taskCode: taskCodeFormatted,
+      taskId: t.taskId || t.task_id || t.id,
       title: t.taskNm || t.taskName || t.name || "Untitled Task",
-      project: project ? project.prjNm || project.name : "Unknown Project",
-      milestone: milestone ? milestone.mlstnTtl || milestone.title || milestone.name : "Unknown Milestone",
+      project: projectName,
+      milestone: milestoneName,
       priority: calculatedPriority,
       dueDate: endDt ? endDt.split('T')[0] : "",
       status: status,
@@ -732,6 +982,8 @@ const MyTasks = ({ userRole, onLogout }) => {
       rawTask: {
         ...t,
         empId: t.empId || t.assignedTo || t.executorId,
+        assignedBy: t.assignedBy || t.assigned_by || t.createdBy || t.creBy,
+        assignedByName: t.assignedByNm || t.assignedByName || t.createdByName,
         reviewerId: t.reviewerId || t.reviewer,
         approverId: t.approverId || t.approver,
       },
@@ -740,8 +992,10 @@ const MyTasks = ({ userRole, onLogout }) => {
   };
 
   const mapIndividualTask = (t, employees) => {
+    const taskCodeFormatted = formatTaskCode(t.taskCd || t.taskCode || t.task_cd || t.code, t.empTaskId || t.id, true);
+
     let status = "OPEN";
-    const taskSts = t.taskSts || t.status || "OPEN";
+    const taskSts = String(t.taskSts || t.status || "OPEN").toUpperCase();
     if (taskSts === "COMPLETED") status = "COMPLETED";
     else if (taskSts === "WIP" || taskSts === "IN_PROGRESS") status = "WIP";
     else if (taskSts === "OPEN") status = "OPEN";
@@ -785,12 +1039,13 @@ const MyTasks = ({ userRole, onLogout }) => {
     }
 
     return {
-      id: t.taskCd || t.taskCode || `IND-${t.empTaskId || t.id}`,
-      taskId: t.empTaskId || t.id,
+      id: taskCodeFormatted,
+      taskCode: taskCodeFormatted,
+      taskId: t.empTaskId || t.emp_task_id || t.taskId || t.task_id || t.id,
       isIndividual: true,
       title: t.taskNm || t.taskName || t.name || "Untitled Task",
       project: "Individual Task",
-      milestone: "-",
+      milestone: "—",
       priority: calculatedPriority,
       dueDate: endDt ? endDt.split('T')[0] : "",
       status: status,
@@ -799,6 +1054,8 @@ const MyTasks = ({ userRole, onLogout }) => {
       rawTask: {
         ...t,
         empId: t.empId || t.assignedTo || t.executorId,
+        assignedBy: t.assignedBy || t.assigned_by || t.createdBy || t.creBy,
+        assignedByName: t.assignedByNm || t.assignedByName || t.createdByName,
         reviewerId: t.reviewerId || t.reviewer,
         approverId: t.approverId || t.approver,
       },
@@ -845,6 +1102,19 @@ const MyTasks = ({ userRole, onLogout }) => {
   const [selectedPriority, setSelectedPriority] = useState("All Priorities");
   const location = useLocation();
   const [selectedStatus, setSelectedStatus] = useState(location.state?.selectedStatus || "To Do");
+
+  useEffect(() => {
+    if (location.state?.selectedStatus) {
+      setSelectedStatus(location.state.selectedStatus);
+      setCurrentPage(1);
+    }
+  }, [location.state]);
+  const [projectsList, setProjectsList] = useState([]);
+  const [milestonesList, setMilestonesList] = useState([]);
+  const [upcomingTaskIds, setUpcomingTaskIds] = useState([]);
+  const [taskAttachments, setTaskAttachments] = useState([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [previewModalFile, setPreviewModalFile] = useState(null);
   const [selectedDueDate, setSelectedDueDate] = useState("");
   const [showFilters, setShowFilters] = useState(true);
   const [taskFilter, setTaskFilter] = useState("All");
@@ -896,7 +1166,7 @@ const MyTasks = ({ userRole, onLogout }) => {
   };
 
   const handleStartTask = async (task, skipAlert = false) => {
-    if (!task) return;
+    if (!task) return task;
     try {
       setLoadingAction(task.id || task.taskId);
       const originalTask = task.rawTask || task;
@@ -915,16 +1185,24 @@ const MyTasks = ({ userRole, onLogout }) => {
         
       console.log(`🚀 Starting task ${taskId}`);
       await apiPut(`${updatePath}?_t=${Date.now()}`, updatedTaskObj);
-      await fetchTasks();
+      const latestTasks = await fetchTasks();
       if (!skipAlert) triggerAlert("success", "Started", "Task moved to Work In Progress.");
-      // Update the selected task
-      if (selectedTask) {
-        const updatedTask = tasks.find(t => t.id === task.id);
-        if (updatedTask) setSelectedTask(updatedTask);
+      
+      let returnedTask = task;
+      if (latestTasks) {
+        const found = latestTasks.find(t => t.id === task.id);
+        if (found) {
+          returnedTask = found;
+          if (selectedTask && selectedTask.id === task.id) {
+            setSelectedTask(found);
+          }
+        }
       }
+      return returnedTask;
     } catch (err) {
       console.error("Error starting task:", err);
       if (!skipAlert) triggerAlert("danger", "Error", "Failed to start task: " + err.message);
+      return task;
     } finally {
       setLoadingAction(null);
     }
@@ -956,15 +1234,75 @@ const MyTasks = ({ userRole, onLogout }) => {
         await sendNotification(targetId, `Task submitted for review: ${task.id}`, task);
       }
       
-      await fetchTasks();
+      const latestTasks = await fetchTasks();
       triggerAlert("success", "Submitted", "Task submitted for review.");
-      if (selectedTask) {
-        const updatedTask = tasks.find(t => t.id === task.id);
+      if (selectedTask && latestTasks) {
+        const updatedTask = latestTasks.find(t => t.id === task.id);
         if (updatedTask) setSelectedTask(updatedTask);
       }
     } catch (err) {
       console.error("Error submitting for review:", err);
       triggerAlert("danger", "Error", "Failed to submit: " + err.message);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleCompleteTask = async (task) => {
+    if (!task) return;
+    try {
+      setLoadingAction(task.id || task.taskId);
+      const originalTask = task.rawTask || task;
+      
+      // 1. Complete all checklists
+      if (updateChecklist && updateChecklist.length > 0) {
+        await Promise.all(updateChecklist
+          .filter(item => item.id != null)
+          .map(item => apiPatch(`/api/checklists/${item.id}/complete?_t=${Date.now()}`, {}))
+        );
+      }
+
+      // 2. Build updated remarks
+      let newRem = originalTask.remarks || originalTask.addlRem || "";
+      if (updateRemarks) {
+        newRem = newRem ? `${newRem}\n---\n[Executor]: ${updateRemarks}` : updateRemarks;
+      }
+
+      const updatedTaskObj = {
+        ...originalTask,
+        taskSts: { statusId: 4, statusNm: "Closed" },
+        prcsYesActn: "NONE",
+        actCmpDt: new Date().toISOString().split("T")[0]
+      };
+      if (task.isIndividual) {
+        updatedTaskObj.remarks = newRem;
+      } else {
+        updatedTaskObj.addlRem = newRem;
+      }
+      
+      const taskId = task.taskId || task.id;
+      const updatePath = task.isIndividual 
+        ? `/api/assignments/${taskId}`
+        : `/api/task-live/${taskId}`;
+        
+      console.log(`✅ Direct completing task ${taskId}`);
+      await apiPut(`${updatePath}?_t=${Date.now()}`, updatedTaskObj);
+
+      // 3. Patch status endpoint to guarantee status_id = 4 in DB
+      const statusPath = task.isIndividual 
+        ? `/api/assignments/${taskId}/status`
+        : `/api/task-live/${taskId}/status`;
+      await apiPatch(`${statusPath}?_t=${Date.now()}`, { taskSts: "CLOSED" });
+      
+      const latestTasks = await fetchTasks();
+      triggerAlert("success", "Completed", "Task completed successfully.");
+      if (selectedTask && latestTasks) {
+        const updatedTask = latestTasks.find(t => t.id === task.id);
+        if (updatedTask) setSelectedTask(updatedTask);
+      }
+    } catch (err) {
+      console.error("Error completing task:", err);
+      triggerAlert("danger", "Error", "Failed to complete: " + err.message);
     } finally {
       setLoadingAction(null);
     }
@@ -1006,10 +1344,10 @@ const MyTasks = ({ userRole, onLogout }) => {
         await sendNotification(originalTask.approverId, `Task ready for approval: ${task.id}`, task);
       }
       
-      await fetchTasks();
+      const latestTasks = await fetchTasks();
       triggerAlert("success", "Approved", "Task approved successfully.");
-      if (selectedTask) {
-        const updatedTask = tasks.find(t => t.id === task.id);
+      if (selectedTask && latestTasks) {
+        const updatedTask = latestTasks.find(t => t.id === task.id);
         if (updatedTask) setSelectedTask(updatedTask);
       }
     } catch (err) {
@@ -1047,10 +1385,10 @@ const MyTasks = ({ userRole, onLogout }) => {
         await sendNotification(originalTask.reviewerId, `Task Closed: ${task.id}`, task);
       }
       
-      await fetchTasks();
+      const latestTasks = await fetchTasks();
       triggerAlert("success", "Closed", "Task closed successfully.");
-      if (selectedTask) {
-        const updatedTask = tasks.find(t => t.id === task.id);
+      if (selectedTask && latestTasks) {
+        const updatedTask = latestTasks.find(t => t.id === task.id);
         if (updatedTask) setSelectedTask(updatedTask);
       }
     } catch (err) {
@@ -1354,10 +1692,18 @@ const MyTasks = ({ userRole, onLogout }) => {
       console.log(`💾 Saving progress for task ${taskId}`);
       await apiPut(`${updatePath}?_t=${Date.now()}`, updatedTaskObj);
 
-      await fetchTasks();
+      const latestTasks = await fetchTasks();
       triggerAlert("success", "Success", "Task progress updated successfully.");
-      if (selectedTask) {
-        const updatedTask = tasks.find(t => t.id === selectedTask.id);
+      
+      if (originalTask?.reviewerId) {
+        await sendNotification(originalTask.reviewerId, `${userName || "Executor"} updated progress for task: ${originalTask.taskNm || originalTask.task_nm || "Task"}`, selectedTask);
+      }
+      if (originalTask?.approverId) {
+        await sendNotification(originalTask.approverId, `${userName || "Executor"} updated progress for task: ${originalTask.taskNm || originalTask.task_nm || "Task"}`, selectedTask);
+      }
+
+      if (selectedTask && latestTasks) {
+        const updatedTask = latestTasks.find(t => t.id === selectedTask.id);
         if (updatedTask) setSelectedTask(updatedTask);
       }
     } catch (err) {
@@ -1397,12 +1743,12 @@ const MyTasks = ({ userRole, onLogout }) => {
     }
   };
 
-  const handleSubmitDeny = async () => {
+  const handleSubmitDeny = async (actionType) => {
     if (!selectedTask) return;
     try {
       const originalTask = selectedTask.rawTask || selectedTask;
       
-      const newStatus = denyData.type;
+      const newStatus = actionType || denyData.type;
       const prefix = `[${newStatus === "REWORK" ? 'Rejected' : 'Reassigned'} - ${sessionStorage.getItem("userName") || 'Reviewer'}]`;
       const existingRem = selectedTask.isIndividual ? originalTask.remarks : originalTask.addlRem;
       const newRem = existingRem ? `${existingRem}\n---\n${prefix}: ${denyData.reason}` : `${prefix}: ${denyData.reason}`;
@@ -1485,31 +1831,52 @@ const MyTasks = ({ userRole, onLogout }) => {
 
   const visibleTasks = tasks;
 
-  const isToDo = (task) => {
-    const rawTask = task.rawTask || task;
-    const isExec = String(rawTask.empId || rawTask.assignedTo) === String(currentUserEmpId);
-    const isRev = String(rawTask.reviewerId || rawTask.reviewer) === String(currentUserEmpId);
-    const isApp = String(rawTask.approverId || rawTask.approver) === String(currentUserEmpId);
-
-    if (!isExec && !isRev && !isApp) return false;
-    if (task.rawStatus === "COMPLETED") return false;
-    return true;
-  };
-
   const isCompletedTab = (task) => {
     const rawTask = task.rawTask || task;
-    const isExec = String(rawTask.empId || rawTask.assignedTo) === String(currentUserEmpId);
-    const isRev = String(rawTask.reviewerId || rawTask.reviewer) === String(currentUserEmpId);
+    const sts = String(rawTask.taskSts || rawTask.status || task.rawStatus || task.status || "").toUpperCase();
+    return sts === "COMPLETED" || sts === "CLOSED" || sts === "DONE" || task.progress === 100;
+  };
 
-    if (task.rawStatus === "COMPLETED") {
-      if (isExec || isRev) return true;
+  const isUpcomingTab = (task) => {
+    if (isCompletedTab(task)) return false;
+
+    const rawTask = task.rawTask || task;
+    const sts = String(rawTask.taskSts || rawTask.status || task.rawStatus || task.status || "").toUpperCase();
+    if (sts === "WIP" || sts === "IN_PROGRESS" || sts.includes("PROGRESS") || sts === "UNDER_REVIEW" || sts === "REWORK" || sts === "REASSIGN" || sts === "DRAFT") {
+      return false;
     }
+
+    const startDtStr = rawTask.stDt || rawTask.startDate || rawTask.start_dt || task.startDate || task.startDt;
+    if (startDtStr) {
+      try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const dateOnly = String(startDtStr).split('T')[0];
+        const [year, month, day] = dateOnly.split('-');
+        const startDateObj = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+        startDateObj.setHours(0, 0, 0, 0);
+
+        if (startDateObj > today) {
+          return true;
+        } else {
+          return false;
+        }
+      } catch (e) {}
+    }
+
+    if (sts === "UPCOMING" || task.status === "UPCOMING" || task.status === "Upcoming" || task.isUpcoming === true) {
+      return true;
+    }
+
     return false;
   };
 
-  const countTodo = visibleTasks.filter(isToDo).length;
-  const countCompleted = visibleTasks.filter(isCompletedTab).length;
-  const countAllTasks = visibleTasks.length;
+  const isToDo = (task) => {
+    if (isCompletedTab(task)) return false;
+    if (isUpcomingTab(task)) return false;
+    return true;
+  };
 
   const getTaskStatusFilter = (task) => {
     const rawTask = task.rawTask || task;
@@ -1520,7 +1887,7 @@ const MyTasks = ({ userRole, onLogout }) => {
       return "OPEN";
     }
     
-    if (sts === "COMPLETED") {
+    if (sts === "COMPLETED" || sts === "CLOSED") {
       return "COMPLETED";
     }
     
@@ -1544,7 +1911,8 @@ const MyTasks = ({ userRole, onLogout }) => {
   const isTaskOverdue = (task) => {
     const rawTask = task.rawTask || task;
     if (!rawTask.endDt) return false;
-    if (rawTask.taskSts === "COMPLETED") return false;
+    const sts = String(rawTask.taskSts || "").toUpperCase();
+    if (sts === "COMPLETED" || sts === "CLOSED") return false;
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1555,11 +1923,7 @@ const MyTasks = ({ userRole, onLogout }) => {
   };
 
   const filteredTasks = tasks.filter(task => {
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      if (!task.id.toLowerCase().includes(q) && !task.title.toLowerCase().includes(q)) return false;
-    }
-    
+    // 1. Basic filters
     if (selectedProject !== "All Projects" && task.project !== selectedProject) return false;
     if (selectedMilestone !== "All Milestones" && task.milestone !== selectedMilestone) return false;
     if (selectedPriority !== "All Priorities" && task.priority !== selectedPriority) return false;
@@ -1568,15 +1932,18 @@ const MyTasks = ({ userRole, onLogout }) => {
       const statusFilter = getTaskStatusFilter(task);
       if (taskFilter === "OVERDUE") {
         if (!isTaskOverdue(task)) return false;
-      } else {
-        if (statusFilter !== taskFilter) return false;
+      } else if (statusFilter !== taskFilter) {
+        return false;
       }
     }
     
-    if (selectedStatus !== "All Statuses") {
+    // 2. Status card filter (To Do, Upcoming, Completed, All)
+    if (selectedStatus !== "All Statuses" && selectedStatus !== "All Tasks") {
       if (selectedStatus === "To Do") {
         if (!isToDo(task)) return false;
-      } else if (selectedStatus === "Completed") {
+      } else if (selectedStatus === "Upcoming") {
+        if (!isUpcomingTab(task)) return false;
+      } else if (selectedStatus === "Completed" || selectedStatus === "Closed") {
         if (!isCompletedTab(task)) return false;
       }
     }
@@ -1671,16 +2038,230 @@ const MyTasks = ({ userRole, onLogout }) => {
       setUpdateProgressVal(0);
     }
 
+    // Load attachments
+    setLoadingAttachments(true);
+    setTaskAttachments([]);
+    try {
+      const rawT = task.rawTask || task;
+      const tId = rawT.taskId || rawT.empTaskId || rawT.id || task.taskId || task.id;
+      
+      let attList = [];
+      const isInd = task.isIndividual || rawT.taskSource === "INDIVIDUAL";
+      const primaryPath = isInd
+        ? `/api/attachments/assignment/${tId}`
+        : `/api/attachments/live-task/${tId}`;
+      const fallbackPath = isInd
+        ? `/api/attachments/live-task/${tId}`
+        : `/api/attachments/draft-task/${tId}`;
+
+      try {
+        const res = await apiGet(primaryPath);
+        if (Array.isArray(res) && res.length > 0) attList = res;
+      } catch (e1) {}
+
+      if (attList.length === 0) {
+        try {
+          const res2 = await apiGet(fallbackPath);
+          if (Array.isArray(res2) && res2.length > 0) attList = res2;
+        } catch (e2) {}
+      }
+      
+      // Also check if rawTask or task has direct attachment url/path
+      const directPath = rawT.atPath || rawT.attachmentUrl || rawT.filePath || rawT.photoUrl || task.atPath;
+      if (directPath) {
+        const fileName = rawT.fileNm || rawT.fileName || "Task Attachment";
+        if (!attList.some(a => a.atPath === directPath)) {
+          attList.push({ fileId: 'raw_1', fileNm: fileName, atPath: directPath });
+        }
+      }
+      
+      setTaskAttachments(attList);
+    } catch (err) {
+      console.error("Failed to load attachments:", err);
+      setTaskAttachments([]);
+    } finally {
+      setLoadingAttachments(false);
+    }
+
     setShowDetailView(true);
   };
 
+  const parseRemarksHistory = (rawStr, task, employeesList) => {
+    if (!rawStr || typeof rawStr !== 'string') return [];
+    
+    const rawBlocks = rawStr.split(/\n---\n|\n(?=\[[^\]]+\]:)/).map(s => s.trim()).filter(Boolean);
+    const parsed = [];
+    
+    rawBlocks.forEach((block, idx) => {
+      let name = "";
+      let role = "TEAM";
+      let action = "Remark";
+      let text = block;
+      let attachments = [];
+      
+      const bracketMatch = block.match(/^\[([^\]]+)\]:\s*([\s\S]*)/);
+      if (bracketMatch) {
+        const header = bracketMatch[1].trim();
+        text = bracketMatch[2].trim();
+        
+        if (header.includes('-')) {
+          const parts = header.split('-');
+          action = parts[0].trim();
+          name = parts.slice(1).join('-').trim();
+        } else {
+          name = header;
+        }
+      }
+
+      const attachMatch = text.match(/\|\|ATTACHMENTS:(.*)\|\|/);
+      if (attachMatch) {
+        try {
+          attachments = JSON.parse(attachMatch[1].trim());
+        } catch (_) {}
+        text = text.replace(/\|\|ATTACHMENTS:.*\|\|/, '').trim();
+      }
+      
+      const rawTask = task?.rawTask || task || {};
+      const appName = getEmployeeName(rawTask.approverId || rawTask.approver, employeesList);
+      const revName = getEmployeeName(rawTask.reviewerId || rawTask.reviewer, employeesList);
+      const exeName = getEmployeeName(rawTask.empId || rawTask.assignedTo, employeesList);
+      
+      if (name) {
+        const lowerName = name.toLowerCase();
+        const foundEmp = employeesList?.find(e => {
+          const fn = (e.fullName || e.empNm || e.name || "").toLowerCase();
+          return fn && (fn.includes(lowerName) || lowerName.includes(fn));
+        });
+        if (foundEmp) {
+          name = foundEmp.fullName || foundEmp.empNm || foundEmp.name || name;
+        }
+
+        if (appName && appName.toLowerCase().includes(lowerName)) { role = "APPROVER"; name = appName; }
+        else if (revName && revName.toLowerCase().includes(lowerName)) { role = "REVIEWER"; name = revName; }
+        else if (exeName && exeName.toLowerCase().includes(lowerName)) { role = "EXECUTOR"; name = exeName; }
+        else if (lowerName.includes("approver")) { role = "APPROVER"; if (appName) name = appName; }
+        else if (lowerName.includes("reviewer")) { role = "REVIEWER"; if (revName) name = revName; }
+        else if (lowerName.includes("executor")) { role = "EXECUTOR"; if (exeName) name = exeName; }
+      } else {
+        name = "Team Member";
+      }
+      
+      const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) || "TM";
+      
+      parsed.push({
+        id: idx,
+        name,
+        initials,
+        role: role.toUpperCase(),
+        action: action.charAt(0).toUpperCase() + action.slice(1),
+        text,
+        attachments
+      });
+    });
+    
+    return parsed;
+  };
+
   // ============================================
-  // TASK DETAIL SCREEN COMPONENT - DYNAMIC
+  // TASK DETAIL SCREEN RENDERER - DYNAMIC (INLINE HELPER)
   // ============================================
-  const TaskDetailScreen = ({ task, onBack }) => {
+  const renderTaskDetailScreen = (task, onBack) => {
     if (!task) return null;
 
     const rawTask = task.rawTask || task;
+
+    const getProjectInfo = () => {
+      if (task.isIndividual || task.project === "Individual Task") {
+        return { isIndividual: true };
+      }
+
+      let pName = null;
+      let mName = null;
+
+      // 1. Check if rawTask has project_info (e.g. "PRJ-01 - m1")
+      if (rawTask.project_info && typeof rawTask.project_info === 'string' && rawTask.project_info.includes(' - ')) {
+        const parts = rawTask.project_info.split(' - ');
+        if (parts[0] && parts[0].trim()) pName = parts[0].trim();
+        if (parts[1] && parts[1].trim()) mName = parts[1].trim();
+      }
+
+      // 2. Resolve Milestone via milestonesList or raw properties
+      const targetMId = String(rawTask.mId || rawTask.m_id || rawTask.mid || rawTask.drftMId || rawTask.milestoneId || '');
+      let targetPrjId = String(rawTask.prjId || rawTask.prj_id || rawTask.prjid || rawTask.projectId || '');
+
+      let foundM = null;
+      if (targetMId && milestonesList && milestonesList.length > 0) {
+        foundM = milestonesList.find(m => {
+          const idStr = String(m.mId || m.m_id || m.mid || m.id || m.milestoneId || '');
+          return idStr && idStr === targetMId;
+        });
+        if (foundM) {
+          mName = foundM.mlstnTtl || foundM.title || foundM.name || foundM.mlstn_ttl || foundM.mlstnNm || mName;
+          if (!targetPrjId) {
+            targetPrjId = String(foundM.prjId || foundM.prj_id || foundM.prjid || foundM.projectId || '');
+          }
+        }
+      }
+
+      if (!mName) {
+        const mCandidates = [task.milestone, rawTask.milestoneName, rawTask.mlstnTtl, rawTask.milestoneTitle, rawTask.mlstnNm, rawTask.mlstn_ttl];
+        for (const c of mCandidates) {
+          if (c && typeof c === 'string' && c.trim() !== '' && c.trim() !== '—' && c.trim() !== 'Internal') {
+            mName = c.trim();
+            break;
+          }
+        }
+      }
+
+      // Title pattern fallback: "Task Name(Milestone Name)"
+      if (!mName && task.title && task.title.includes('(') && task.title.includes(')')) {
+        const matchM = task.title.match(/\(([^)]+)\)$/);
+        if (matchM && matchM[1]) {
+          mName = matchM[1].trim();
+        }
+      }
+
+      // 3. Resolve Project via projectsList or raw properties
+      let foundP = null;
+      if (targetPrjId && projectsList && projectsList.length > 0) {
+        foundP = projectsList.find(p => {
+          const idStr = String(p.prjId || p.prj_id || p.prjid || p.id || p.projectId || '');
+          return idStr && idStr === targetPrjId;
+        });
+        if (foundP) {
+          pName = foundP.prjNm || foundP.name || foundP.prj_nm || foundP.prjCd || pName;
+        }
+      }
+
+      if (pName && projectsList && projectsList.length > 0) {
+        // If pName is code like "PRJ-01", try finding full name in projectsList
+        const codeMatch = projectsList.find(p => 
+          String(p.prjCd || '').toUpperCase() === pName.toUpperCase() ||
+          String(p.prjNm || '').toUpperCase() === pName.toUpperCase()
+        );
+        if (codeMatch) {
+          pName = codeMatch.prjNm || codeMatch.name || codeMatch.prj_nm || pName;
+        }
+      }
+
+      if (!pName || pName === "Internal") {
+        const pCandidates = [task.project, rawTask.projectName, rawTask.prjNm, rawTask.prj_nm, rawTask.projectCodeName, rawTask.prjCd];
+        for (const c of pCandidates) {
+          if (c && typeof c === 'string' && c.trim() !== '' && c.trim() !== 'Internal') {
+            pName = c.trim();
+            break;
+          }
+        }
+      }
+
+      return {
+        isIndividual: false,
+        projectName: pName || "Internal",
+        milestoneName: mName || "—"
+      };
+    };
+
+    const projectInfo = getProjectInfo();
     const timeStatus = calculateTimeStatus(rawTask);
     const progressBadge = getProgressBadge(task.status || task.rawStatus);
     const priorityBadge = getPriorityBadge(task.priority);
@@ -1690,7 +2271,7 @@ const MyTasks = ({ userRole, onLogout }) => {
     
     const isOverdue = (() => {
       if (!rawTask?.endDt) return false;
-      if (rawTask?.taskSts === "COMPLETED") return false;
+      if (rawTask?.taskSts === "COMPLETED" || rawTask?.taskSts === "CLOSED") return false;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const dueDate = new Date(rawTask.endDt);
@@ -1698,7 +2279,7 @@ const MyTasks = ({ userRole, onLogout }) => {
       return today > dueDate;
     })();
 
-    const isCompleted = task.rawStatus === "COMPLETED";
+    const isCompleted = task.rawStatus === "COMPLETED" || task.rawStatus === "CLOSED";
     const isDoer = String(rawTask.empId || rawTask.assignedTo) === String(currentUserEmpId);
     const isReviewer = String(rawTask.reviewerId || rawTask.reviewer) === String(currentUserEmpId);
     const isApprover = String(rawTask.approverId || rawTask.approver) === String(currentUserEmpId);
@@ -1710,13 +2291,21 @@ const MyTasks = ({ userRole, onLogout }) => {
     // Determine if task is in review
     const isUnderReview = currentProcess === "PENDING_REVIEWER" || currentProcess === "PENDING_APPROVER" || currentProcess === "UNDER_REVIEW";
 
-    const renderTeamMember = (empId, role, label) => {
-      if (!empId) return null;
-      const name = getEmployeeName(empId, employeesList);
-      const initials = getEmployeeInitials(empId, employeesList);
+    const renderTeamMember = (empId, role, label, fallbackName = null) => {
+      if (!empId && !fallbackName) return null;
+      let name = getEmployeeName(empId, employeesList);
+      if ((!name || name === "Unknown" || name.startsWith("User ")) && fallbackName) {
+        name = fallbackName;
+      }
+      let initials = getEmployeeInitials(empId, employeesList);
+      if ((!initials || initials === "UN") && name && name !== "Unknown") {
+        const parts = name.trim().split(" ");
+        initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0].substring(0, 2).toUpperCase();
+      }
       const photo = getEmployeePhoto(empId, employeesList);
       
       const roleColors = {
+        "Assigned By": { bg: "#6366F1", light: "#EEF2FF" },
         "Executor": { bg: "#3B82F6", light: "#DBEAFE" },
         "Reviewer": { bg: "#8B5CF6", light: "#EDE9FE" },
         "Approver": { bg: "#F59E0B", light: "#FEF3C7" }
@@ -1777,43 +2366,53 @@ const MyTasks = ({ userRole, onLogout }) => {
       );
     };
 
+    const getCurrentStatusDisplay = () => {
+      const rawSts = String(rawTask?.taskSts?.statusNm || rawTask?.taskSts || task.rawStatus || task.status || "").toUpperCase();
+      const taskStsId = rawTask?.taskSts?.statusId || rawTask?.taskSts;
+      if (rawSts === "CLOSED" || rawSts === "COMPLETED" || taskStsId === 4 || isCompleted) {
+        return "CLOSED";
+      }
+      if (currentProcess === "PENDING_REVIEWER" || currentProcess === "PENDING_APPROVER" || currentProcess === "UNDER_REVIEW") {
+        return "UNDER_REVIEW";
+      }
+      if (isOverdue) return "OVERDUE";
+      if (currentProgress === "HOLD") return "HOLD";
+      if (currentProgress === "OPEN" || currentProgress === "DRAFT") return "OPEN";
+      return "WIP";
+    };
+
     const getStatusColor = (status) => {
-      if (status === "COMPLETED") return "#16a34a";
+      if (status === "CLOSED" || status === "COMPLETED") return "#16a34a";
       if (status === "OVERDUE") return "#ef4444";
       if (status === "UNDER_REVIEW") return "#8b5cf6";
       return "#3b82f6";
     };
 
     const getStatusBgColor = (status) => {
-      if (status === "COMPLETED") return "#dcfce7";
+      if (status === "CLOSED" || status === "COMPLETED") return "#dcfce7";
       if (status === "OVERDUE") return "#fee2e2";
       if (status === "UNDER_REVIEW") return "#f3e8ff";
-      if (status === "IN_PROGRESS") return "#dbeafe";
+      if (status === "IN_PROGRESS" || status === "WIP") return "#fef3c7";
       return "#f1f5f9";
     };
 
     // Render action buttons based on dynamic state
     const renderActionButtons = () => {
       if (isCompleted) {
-        return (
-          <button 
-            className="cc-btn secondary" 
-            onClick={onBack}
-            style={{ borderRadius: "6px", width: "100%" }}
-          >
-            Back to Tasks
-          </button>
-        );
+        return null;
       }
 
       // REVIEWER ACTIONS
-      if (isReviewer && isUnderReview) {
+      if (isReviewer && (currentProcess === "PENDING_REVIEWER" || currentProcess === "UNDER_REVIEW")) {
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-            <button className="cc-btn secondary" onClick={onBack} style={{ borderRadius: "6px", width: "100%" }}>Back</button>
             <button 
               className="cc-btn danger" 
-              onClick={() => setShowDenyForm(true)} 
+              onClick={() => {
+                setShowDenyForm(true);
+                setIsRaiseRequest(false);
+                setDenyData({ type: "", reason: "", milestone: "", deliverable: "", impact: "Medium" });
+              }} 
               style={{ borderRadius: "6px", backgroundColor: "#ef4444", color: "white", border: "none", width: "100%" }}
             >
               Denied
@@ -1833,13 +2432,16 @@ const MyTasks = ({ userRole, onLogout }) => {
       }
 
       // APPROVER ACTIONS
-      if (isApprover && isUnderReview) {
+      if (isApprover && currentProcess === "PENDING_APPROVER") {
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-            <button className="cc-btn secondary" onClick={onBack} style={{ borderRadius: "6px", width: "100%" }}>Back</button>
             <button 
               className="cc-btn danger" 
-              onClick={() => setShowDenyForm(true)} 
+              onClick={() => {
+                setShowDenyForm(true);
+                setIsRaiseRequest(false);
+                setDenyData({ type: "", reason: "", milestone: "", deliverable: "", impact: "Medium" });
+              }} 
               style={{ borderRadius: "6px", backgroundColor: "#ef4444", color: "white", border: "none", width: "100%" }}
             >
               Denied
@@ -1864,13 +2466,10 @@ const MyTasks = ({ userRole, onLogout }) => {
         if (currentProgress === "OPEN" || currentProgress === "DRAFT") {
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-              <button className="cc-btn secondary" onClick={onBack} style={{ borderRadius: "6px", width: "100%" }}>Back</button>
               <button 
                 className="cc-btn primary" 
                 onClick={async () => {
                   await handleStartTask(task);
-                  const updatedTask = tasks.find(t => t.id === task.id);
-                  if (updatedTask) setSelectedTask(updatedTask);
                 }} 
                 style={{ borderRadius: "6px", backgroundColor: "#3b82f6", border: "none", color: "white", width: "100%" }}
               >
@@ -1880,29 +2479,39 @@ const MyTasks = ({ userRole, onLogout }) => {
           );
         }
 
-        // WORK_IN_PROGRESS with NONE or REWORK -> Update / Submit Review
+        // WORK_IN_PROGRESS with NONE or REWORK or REASSIGN -> Update / Submit Review / Mark as Complete
         if ((currentProgress === "WIP" || currentProgress === "IN_PROGRESS") && 
-            (currentProcess === "NONE" || currentProcess === "REWORK" || !currentProcess)) {
+            (currentProcess === "NONE" || currentProcess === "REWORK" || currentProcess === "REASSIGN" || !currentProcess)) {
           const allChecked = updateChecklist.length > 0 && updateChecklist.every(c => c.completed);
-          const label = allChecked || updateChecklist.length === 0 ? "Submit Review" : "Save Progress";
-          const isSubmit = label === "Submit Review";
+          const hasWorkflow = rawTask?.prcsFlg === true || rawTask?.prcsFlg === 'YES' || rawTask?.prcsFlg === 1 || rawTask?.prcsFlg === 'true';
+          
+          let label = "Save Progress";
+          if (allChecked || updateChecklist.length === 0) {
+            label = hasWorkflow ? "Submit Review" : "Mark as Complete";
+          }
           
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-              <button className="cc-btn secondary" onClick={onBack} style={{ borderRadius: "6px", width: "100%" }}>Back</button>
               <button 
                 className="cc-btn primary" 
                 onClick={async () => {
-                  if (isSubmit) {
+                  if (label === "Mark as Complete") {
+                    await handleCompleteTask(task);
+                  } else if (label === "Submit Review") {
                     await handleUpdateProgress();
                     await handleSubmitReview(task);
                   } else {
                     await handleSaveProgress();
                   }
-                  const updatedTask = tasks.find(t => t.id === task.id);
-                  if (updatedTask) setSelectedTask(updatedTask);
                 }} 
-                style={{ borderRadius: "6px", backgroundColor: isSubmit ? "#8B5CF6" : "#0F172A", border: "none", color: "white", width: "100%" }}
+                style={{ 
+                  borderRadius: "6px", 
+                  backgroundColor: label === "Mark as Complete" ? "#16a34a" : label === "Submit Review" ? "#8B5CF6" : "#0F172A", 
+                  border: "none", 
+                  color: "white", 
+                  width: "100%",
+                  fontWeight: "600"
+                }}
               >
                 {label}
               </button>
@@ -1910,15 +2519,14 @@ const MyTasks = ({ userRole, onLogout }) => {
           );
         }
 
-        // WORK_IN_PROGRESS with UNDER_REVIEW or REASSIGN -> Send Reminder
+        // WORK_IN_PROGRESS with UNDER_REVIEW -> Send Reminder
         if ((currentProgress === "WIP" || currentProgress === "IN_PROGRESS" || currentProgress === "UNDER_REVIEW") && 
-            (currentProcess === "PENDING_REVIEWER" || currentProcess === "PENDING_APPROVER" || currentProcess === "REASSIGN")) {
+            (currentProcess === "PENDING_REVIEWER" || currentProcess === "PENDING_APPROVER")) {
           const targetId = rawTask.reviewerId || rawTask.approverId;
           const role = rawTask.reviewerId ? "Reviewer" : "Approver";
           
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-              <button className="cc-btn secondary" onClick={onBack} style={{ borderRadius: "6px", width: "100%" }}>Back</button>
               <button 
                 className="cc-btn primary" 
                 onClick={() => handleSendReminder(targetId, role)} 
@@ -1934,13 +2542,10 @@ const MyTasks = ({ userRole, onLogout }) => {
         if (currentProgress === "HOLD") {
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-              <button className="cc-btn secondary" onClick={onBack} style={{ borderRadius: "6px", width: "100%" }}>Back</button>
               <button 
                 className="cc-btn primary" 
                 onClick={async () => {
                   await handleResumeTask(task);
-                  const updatedTask = tasks.find(t => t.id === task.id);
-                  if (updatedTask) setSelectedTask(updatedTask);
                 }} 
                 style={{ borderRadius: "6px", backgroundColor: "#3b82f6", border: "none", color: "white", width: "100%" }}
               >
@@ -1951,12 +2556,7 @@ const MyTasks = ({ userRole, onLogout }) => {
         }
       }
 
-      // Default: Back button only
-      return (
-        <button className="cc-btn secondary" onClick={onBack} style={{ borderRadius: "6px", width: "100%" }}>
-          Back to Tasks
-        </button>
-      );
+      return null;
     };
 
     return (
@@ -2028,8 +2628,6 @@ const MyTasks = ({ userRole, onLogout }) => {
                 onClick={async () => {
                   if (action.action === "start") {
                     await handleStartTask(task);
-                    const updatedTask = tasks.find(t => t.id === task.id);
-                    if (updatedTask) setSelectedTask(updatedTask);
                   } else if (action.action === "update") {
                     // Already in detail view
                   } else if (action.action === "review") {
@@ -2134,24 +2732,30 @@ const MyTasks = ({ userRole, onLogout }) => {
                 </div>
               </div>
 
-              {/* Current Progress & Process Status */}
-              <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #f1f5f9" }}>
-                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                  <div style={{ fontSize: "13px", color: "#64748b" }}>
-                    <span style={{ fontWeight: "500" }}>Progress:</span>{' '}
-                    <span style={{ fontWeight: "600", color: "#0f172a" }}>{currentProgress}</span>
+              {/* Project / Milestone or Individual Task Badge */}
+              <div style={{ marginTop: "20px", paddingTop: "16px", borderTop: "1px solid #f1f5f9" }}>
+                {projectInfo.isIndividual ? (
+                  <span style={{
+                    backgroundColor: "#dbeafe",
+                    color: "#2563eb",
+                    padding: "6px 14px",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    display: "inline-block"
+                  }}>
+                    Individual Task
+                  </span>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: "13px", color: "#64748b" }}>
+                      <span style={{ fontWeight: "600", color: "#0f172a" }}>Project:</span> {projectInfo.projectName}
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
+                      <span style={{ fontWeight: "600", color: "#0f172a" }}>Milestone:</span> {projectInfo.milestoneName}
+                    </div>
                   </div>
-                  <div style={{ fontSize: "13px", color: "#64748b" }}>
-                    <span style={{ fontWeight: "500" }}>Process:</span>{' '}
-                    <span style={{ fontWeight: "600", color: "#0f172a" }}>{currentProcess}</span>
-                  </div>
-                </div>
-                <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-                  <span style={{ fontWeight: "500" }}>Project:</span> {task.project || "N/A"}
-                </div>
-                <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-                  <span style={{ fontWeight: "500" }}>Milestone:</span> {task.milestone || "N/A"}
-                </div>
+                )}
               </div>
 
               {/* Process Status Details */}
@@ -2163,8 +2767,8 @@ const MyTasks = ({ userRole, onLogout }) => {
                   <div style={{ fontSize: "14px", fontWeight: "600", color: "#0f172a" }}>
                     {rawTask.prcsYesActn === "PENDING_REVIEWER" && "⏳ Under Review (Reviewer)"}
                     {rawTask.prcsYesActn === "PENDING_APPROVER" && "⏳ Under Review (Approver)"}
-                    {rawTask.prcsYesActn === "REWORK" && "🔄 Rework Required"}
-                    {rawTask.prcsYesActn === "REASSIGN" && "🔄 Reassigned"}
+                    {rawTask.prcsYesActn === "REWORK" && <><RefreshCw size={16} color="#F97316" style={{ display: "inline", marginRight: "6px" }} /><span style={{ color: "#F97316" }}>Rework Required</span></>}
+                    {rawTask.prcsYesActn === "REASSIGN" && <><ReassignIcon size={16} color="#4F46E5" style={{ display: "inline", marginRight: "6px" }} /><span style={{ color: "#4F46E5" }}>Reassigned</span></>}
                   </div>
                 </div>
               )}
@@ -2258,6 +2862,256 @@ const MyTasks = ({ userRole, onLogout }) => {
               </div>
             )}
 
+            {/* Task Attachments Card */}
+            <div style={{
+              backgroundColor: "white",
+              borderRadius: "12px",
+              border: "1px solid #e2e8f0",
+              padding: "24px",
+              marginBottom: "24px"
+            }}>
+              <div style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Paperclip size={18} color="#0f172a" />
+                Task Attachments {taskAttachments.length > 0 ? `(${taskAttachments.length})` : ''}
+              </div>
+
+              {loadingAttachments ? (
+                <div style={{ padding: "16px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>
+                  <Loader2 size={16} className="spinning" style={{ display: "inline", marginRight: "8px" }} /> Loading attachments...
+                </div>
+              ) : taskAttachments.length === 0 ? (
+                <div style={{ padding: "16px", backgroundColor: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px", color: "#64748b" }}>
+                  No attachments uploaded for this task.
+                </div>
+              ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "16px" }}>
+                    {taskAttachments.map((att, idx) => {
+                      const fileName = att.fileNm || att.fileName || `Attachment ${idx + 1}`;
+                      let rawUrl = att.atPath || att.url || att.filePath || "#";
+                      if (typeof rawUrl === "string" && rawUrl.trim().startsWith("{")) {
+                        try {
+                          const parsed = JSON.parse(rawUrl);
+                          if (parsed && parsed.url) rawUrl = parsed.url;
+                        } catch (e) {}
+                      }
+                      let url = rawUrl;
+                      if (typeof rawUrl === "string" && rawUrl.startsWith("http") && (rawUrl.includes("supabase.co") || rawUrl.includes("/storage/v1/object/"))) {
+                        url = `${apiBaseUrl}/api/storage/view?url=${encodeURIComponent(rawUrl)}`;
+                      }
+                      const isImage = /\.(png|jpe?g|gif|webp|svg)($|\?)/i.test(fileName) || /\.(png|jpe?g|gif|webp|svg)($|\?)/i.test(url) || (url && url.startsWith('data:image'));
+                      const isPdf = /\.pdf($|\?)/i.test(fileName) || /\.pdf($|\?)/i.test(url);
+                      const isZip = /\.(zip|rar|7z|tar|gz)($|\?)/i.test(fileName) || /\.(zip|rar|7z|tar|gz)($|\?)/i.test(url);
+
+                      const downloadUrl = `${apiBaseUrl}/api/storage/download?url=${encodeURIComponent(rawUrl)}&name=${encodeURIComponent(fileName)}`;
+
+                      return (
+                        <div key={att.fileId || idx} style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "10px",
+                          overflow: "hidden",
+                          backgroundColor: "#f8fafc",
+                          display: "flex",
+                          flexDirection: "column",
+                          transition: "all 0.2s ease"
+                        }}>
+                          {/* Preview Thumbnail for Image or File Header */}
+                          {isImage ? (
+                            <div style={{ height: "130px", backgroundColor: "#0f172a", position: "relative", overflow: "hidden" }}>
+                              <img 
+                                src={url.startsWith('http') || url.startsWith('data:') ? url : `data:image/jpeg;base64,${url}`} 
+                                alt={fileName} 
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+                              />
+                            </div>
+                          ) : (
+                            <div style={{ height: "90px", backgroundColor: isPdf ? "#fee2e2" : isZip ? "#f3e8ff" : "#e0f2fe", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "4px" }}>
+                              <FileText size={32} color={isPdf ? "#ef4444" : isZip ? "#9333ea" : "#0284c7"} />
+                              {isZip && <span style={{ fontSize: "10px", fontWeight: "700", color: "#9333ea", backgroundColor: "#e9d5ff", padding: "1px 6px", borderRadius: "4px" }}>ZIP ARCHIVE</span>}
+                            </div>
+                          )}
+
+                          {/* File details & view/download button */}
+                          <div style={{ padding: "12px", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "8px" }}>
+                            <div style={{ fontSize: "13px", fontWeight: "600", color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={fileName}>
+                              {fileName}
+                            </div>
+                            <button 
+                              type="button"
+                              onClick={() => setPreviewModalFile({ name: fileName, url: url, downloadUrl: downloadUrl, isImage: isImage, isPdf: isPdf })}
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: "600",
+                                color: "#2563eb",
+                                border: "none",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                backgroundColor: "#dbeafe",
+                                padding: "6px 12px",
+                                borderRadius: "6px",
+                                width: "fit-content"
+                              }}
+                            >
+                              <Eye size={13} /> View / Open File
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            {/* Attachment Preview Modal */}
+            {previewModalFile && (
+              <div style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "rgba(15, 23, 42, 0.8)",
+                backdropFilter: "blur(4px)",
+                zIndex: 99999,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "20px"
+              }}>
+                <div style={{
+                  backgroundColor: "white",
+                  borderRadius: "16px",
+                  width: "90%",
+                  maxWidth: "900px",
+                  maxHeight: "90vh",
+                  display: "flex",
+                  flexDirection: "column",
+                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
+                  overflow: "hidden"
+                }}>
+                  {/* Modal Header */}
+                  <div style={{
+                    padding: "16px 24px",
+                    borderBottom: "1px solid #e2e8f0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    backgroundColor: "#fafbfc"
+                  }}>
+                    <div style={{ fontWeight: "700", fontSize: "16px", color: "#0f172a", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <FileText size={18} color="#2563eb" />
+                      {previewModalFile.name}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <a
+                        href={previewModalFile.downloadUrl}
+                        download={previewModalFile.name}
+                        style={{
+                          padding: "6px 14px",
+                          backgroundColor: "#16a34a",
+                          color: "white",
+                          borderRadius: "6px",
+                          fontSize: "13px",
+                          fontWeight: "600",
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px"
+                        }}
+                      >
+                        📥 Download File
+                      </a>
+                      <a
+                        href={previewModalFile.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: "6px 14px",
+                          backgroundColor: "#2563eb",
+                          color: "white",
+                          borderRadius: "6px",
+                          fontSize: "13px",
+                          fontWeight: "600",
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px"
+                        }}
+                      >
+                        🔗 Open View
+                      </a>
+                      <button
+                        onClick={() => setPreviewModalFile(null)}
+                        style={{
+                          background: "#f1f5f9",
+                          border: "none",
+                          borderRadius: "50%",
+                          width: "32px",
+                          height: "32px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          color: "#64748b"
+                        }}
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Modal Body */}
+                  <div style={{
+                    padding: "24px",
+                    overflowY: "auto",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "#0f172a",
+                    minHeight: "350px"
+                  }}>
+                    {previewModalFile.isImage ? (
+                      <img
+                        src={previewModalFile.url}
+                        alt={previewModalFile.name}
+                        style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: "8px" }}
+                      />
+                    ) : previewModalFile.isPdf ? (
+                      <iframe
+                        src={previewModalFile.url}
+                        title={previewModalFile.name}
+                        style={{ width: "100%", height: "70vh", border: "none", borderRadius: "8px", backgroundColor: "white" }}
+                      />
+                    ) : (
+                      <div style={{ textAlign: "center", color: "white", padding: "40px" }}>
+                        <FileText size={64} color="#94a3b8" style={{ marginBottom: "16px" }} />
+                        <div style={{ fontSize: "16px", fontWeight: "600" }}>{previewModalFile.name}</div>
+                        <a
+                          href={previewModalFile.url}
+                          download={previewModalFile.name}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            marginTop: "16px",
+                            display: "inline-block",
+                            padding: "10px 20px",
+                            backgroundColor: "#2563eb",
+                            color: "white",
+                            borderRadius: "6px",
+                            textDecoration: "none",
+                            fontWeight: "600"
+                          }}
+                        >
+                          Download File
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Remarks History */}
             {(rawTask?.addlRem || rawTask?.remarks) && (
               <div style={{
@@ -2267,20 +3121,111 @@ const MyTasks = ({ userRole, onLogout }) => {
                 padding: "24px",
                 marginBottom: "24px"
               }}>
-                <div style={{ fontSize: "14px", fontWeight: "600", color: "#0f172a", marginBottom: "8px" }}>
-                  <MessageSquare size={18} style={{ display: "inline", marginRight: "8px" }} />
+                <div style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <MessageSquare size={18} color="#0f172a" />
                   Remarks History
                 </div>
+                
                 <div style={{
-                  padding: "12px",
-                  borderRadius: "8px",
-                  backgroundColor: "#fef3c7",
-                  border: "1px solid #fde68a",
-                  fontSize: "13px",
-                  color: "#92400e",
-                  whiteSpace: "pre-wrap"
+                  backgroundColor: "#f8fafc",
+                  borderRadius: "10px",
+                  border: "1px solid #e2e8f0",
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px"
                 }}>
-                  {rawTask.addlRem || rawTask.remarks}
+                  {parseRemarksHistory(rawTask.addlRem || rawTask.remarks, task, employeesList).map((rem) => (
+                    <div key={rem.id} style={{
+                      backgroundColor: "white",
+                      borderRadius: "8px",
+                      border: "1px solid #e2e8f0",
+                      padding: "16px 20px",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "16px"
+                    }}>
+                      {/* Avatar Circle */}
+                      <div style={{
+                        width: "40px",
+                        height: "40px",
+                        borderRadius: "50%",
+                        backgroundColor: "#3b82f6",
+                        color: "white",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: "700",
+                        fontSize: "13px",
+                        flexShrink: 0
+                      }}>
+                        {rem.initials}
+                      </div>
+                      
+                      {/* Main Info */}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "6px" }}>
+                          <span style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a" }}>{rem.name}</span>
+                          <span style={{
+                            backgroundColor: "#fef3c7",
+                            color: "#d97706",
+                            fontSize: "11px",
+                            fontWeight: "700",
+                            padding: "2px 8px",
+                            borderRadius: "4px",
+                            letterSpacing: "0.5px"
+                          }}>
+                            {rem.role}
+                          </span>
+                          <span style={{
+                            backgroundColor: rem.action?.toLowerCase().includes("rework") ? "#FFF7ED" : (rem.action?.toLowerCase().includes("reassign") ? "#EEF2FF" : "#FEF3C7"),
+                            color: rem.action?.toLowerCase().includes("rework") ? "#F97316" : (rem.action?.toLowerCase().includes("reassign") ? "#4F46E5" : "#D97706"),
+                            fontSize: "12px",
+                            fontWeight: "600",
+                            padding: "2px 10px",
+                            borderRadius: "12px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px"
+                          }}>
+                            {rem.action?.toLowerCase().includes("rework") && <RefreshCw size={13} color="#F97316" />}
+                            {rem.action?.toLowerCase().includes("reassign") && <ReassignIcon size={13} color="#4F46E5" />}
+                            {rem.action}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "14px", color: "#475569", lineHeight: "1.5" }}>
+                          {rem.text}
+                        </div>
+                        {rem.attachments && rem.attachments.length > 0 && (
+                          <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                            {rem.attachments.map((att, attIdx) => (
+                              <a
+                                key={attIdx}
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  padding: "4px 10px",
+                                  backgroundColor: "#f1f5f9",
+                                  color: "#2563eb",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: "600",
+                                  textDecoration: "none",
+                                  border: "1px solid #cbd5e1"
+                                }}
+                              >
+                                <Paperclip size={13} /> {att.name || 'Attachment'}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -2354,6 +3299,14 @@ const MyTasks = ({ userRole, onLogout }) => {
                 Team
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {(task.isIndividual || projectInfo.isIndividual || rawTask?.assignedBy || rawTask?.assigned_by) && (
+                  renderTeamMember(
+                    rawTask?.assignedBy || rawTask?.assigned_by || rawTask?.createdBy,
+                    "Assigned By",
+                    "AB",
+                    rawTask?.assignedByNm || rawTask?.assignedByName
+                  )
+                )}
                 {renderTeamMember(rawTask?.empId || rawTask?.assignedTo, "Executor", "EX")}
                 {renderTeamMember(rawTask?.reviewerId || rawTask?.reviewer, "Reviewer", "RV")}
                 {renderTeamMember(rawTask?.approverId || rawTask?.approver, "Approver", "AP")}
@@ -2408,63 +3361,174 @@ const MyTasks = ({ userRole, onLogout }) => {
             </div>
 
             {/* Action Buttons - Dynamic */}
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "12px",
-              border: "1px solid #e2e8f0",
-              padding: "20px"
-            }}>
-              <div style={{ fontSize: "15px", fontWeight: "600", color: "#0f172a", marginBottom: "14px" }}>
-                <Play size={18} style={{ display: "inline", marginRight: "8px" }} />
-                Actions
-              </div>
-              {renderActionButtons()}
-            </div>
-
-            {/* Deny Form */}
-            {showDenyForm && (
+            {!isCompleted && renderActionButtons() && (
               <div style={{
                 backgroundColor: "white",
                 borderRadius: "12px",
                 border: "1px solid #e2e8f0",
-                padding: "20px",
-                marginTop: "20px"
+                padding: "20px"
               }}>
-                <h4 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "16px", color: "#0f172a" }}>
-                  {denyData.type === "REWORK" ? "Reject Task" : "Reassign Task"}
-                </h4>
-                <div className="myt-form-group" style={{ marginBottom: "12px" }}>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#475569", marginBottom: "4px" }}>Select Action</label>
-                  <select className="myt-input" style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} 
-                    value={denyData.type} onChange={e => setDenyData({...denyData, type: e.target.value})}>
-                    <option value="">Select Action</option>
-                    <option value="REWORK">Reject (Send for Rework)</option>
-                    <option value="REASSIGN">Reassign</option>
-                  </select>
+                <div style={{ fontSize: "15px", fontWeight: "600", color: "#0f172a", marginBottom: "14px" }}>
+                  <Play size={18} style={{ display: "inline", marginRight: "8px" }} />
+                  Actions
                 </div>
-                <div className="myt-form-group" style={{ marginBottom: "12px" }}>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#475569", marginBottom: "4px" }}>Reason</label>
-                  <textarea className="myt-input" style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", minHeight: "60px" }}
-                    placeholder="Enter reason..." value={denyData.reason} onChange={e => setDenyData({...denyData, reason: e.target.value})} />
-                </div>
-                {denyData.type === "REASSIGN" && (
-                  <div className="myt-form-group" style={{ marginBottom: "12px" }}>
-                    <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#475569", marginBottom: "4px" }}>New Executor ID</label>
-                    <input type="text" className="myt-input" style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} 
-                      placeholder="Enter new executor ID..." value={denyData.milestone} onChange={e => setDenyData({...denyData, milestone: e.target.value})} />
-                  </div>
-                )}
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #e2e8f0" }}>
-                  <button className="cc-btn secondary" onClick={() => setShowDenyForm(false)} style={{ borderRadius: "6px" }}>Cancel</button>
-                  <button className="cc-btn primary" onClick={handleSubmitDeny} disabled={!denyData.type || !denyData.reason} 
-                    style={{ borderRadius: "6px", backgroundColor: "#ef4444", border: "none", color: "white" }}>
-                    {denyData.type === "REWORK" ? "Submit Rework" : "Reassign"}
-                  </button>
-                </div>
+                {renderActionButtons()}
               </div>
             )}
           </div>
         </div>
+
+        {/* Deny / Raise Request Form - Full Width at Bottom */}
+        {showDenyForm && (
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+            padding: "32px",
+            marginTop: "24px",
+            boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+            animation: "fadeInUp 0.3s ease-out"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid #f1f5f9" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                <span style={{ fontSize: "18px", fontWeight: "700", color: "#0f172a" }}>Raise Request</span>
+                {/* Toggle Switch */}
+                <div 
+                  onClick={() => {
+                    const newToggleState = !isRaiseRequest;
+                    setIsRaiseRequest(newToggleState);
+                    const isStartTask = task?.rawTask?.seq === 1 || task?.rawTask?.isStartTask || task?.taskId === 1 || task?.taskCode?.endsWith('001') || false;
+                    setDenyData({...denyData, type: newToggleState ? (isStartTask ? "REWORK" : "REASSIGN") : ""});
+                  }}
+                  style={{
+                    width: "48px", height: "26px", borderRadius: "13px",
+                    backgroundColor: isRaiseRequest ? "#3b82f6" : "#cbd5e1",
+                    position: "relative", cursor: "pointer", transition: "all 0.3s ease"
+                  }}
+                >
+                  <div style={{
+                    width: "20px", height: "20px", borderRadius: "50%",
+                    backgroundColor: "white", position: "absolute", top: "3px",
+                    left: isRaiseRequest ? "25px" : "3px", transition: "all 0.3s ease",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)"
+                  }} />
+                </div>
+              </div>
+              <button onClick={() => setShowDenyForm(false)} style={{ background: "#f1f5f9", borderRadius: "50%", padding: "8px", border: "none", cursor: "pointer", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {isRaiseRequest ? (
+              <div style={{ paddingTop: "8px" }}>
+                {(() => {
+                  const isStartTask = task?.rawTask?.seq === 1 || task?.rawTask?.isStartTask || task?.taskId === 1 || task?.taskCode?.endsWith('001') || false;
+                  
+                  if (isStartTask) {
+                    return (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
+                          <div className="myt-form-group">
+                            <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Select Source Milestone</label>
+                            <select className="myt-input" style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px" }}
+                              value={denyData.milestone || ""} onChange={e => setDenyData({...denyData, milestone: e.target.value})}>
+                              <option value="">Select Milestone</option>
+                              <option value={task.milestone || "Current Milestone"}>{task.milestone || "Current Milestone"}</option>
+                            </select>
+                          </div>
+                          <div className="myt-form-group">
+                            <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Select Deliverable</label>
+                            <select className="myt-input" style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px" }}
+                              value={denyData.deliverable || ""} onChange={e => setDenyData({...denyData, deliverable: e.target.value})}>
+                              <option value="">Select Deliverable (Task)</option>
+                              <option value={task.title || "Current Task"}>{task.title || "Current Task"}</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="myt-form-group" style={{ marginBottom: "20px" }}>
+                          <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Reason</label>
+                          <textarea className="myt-input" style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", minHeight: "100px", fontSize: "14px" }}
+                            placeholder="Enter detailed reason..." value={denyData.reason || ""} onChange={e => setDenyData({...denyData, reason: e.target.value})} />
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "24px" }}>
+                          <div className="myt-form-group">
+                            <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Attachments (optional)</label>
+                            <div style={{ width: "100%", padding: "16px", border: "2px dashed #cbd5e1", borderRadius: "8px", textAlign: "center", cursor: "pointer", color: "#64748b", backgroundColor: "#f8fafc", position: "relative" }}>
+                              <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.webp" multiple onChange={(e) => setDenyData({...denyData, attachments: e.target.files})} style={{ opacity: 0, position: "absolute", top: 0, left: 0, width: "100%", height: "100%", cursor: "pointer" }} />
+                              <Paperclip size={18} style={{ verticalAlign: "middle", marginRight: "8px" }} /> <span style={{ fontSize: "14px" }}>Click or drag files to upload</span>
+                            </div>
+                          </div>
+                          <div className="myt-form-group">
+                            <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Impact</label>
+                            <select className="myt-input" style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px" }}
+                              value={denyData.impact || "Medium"} onChange={e => setDenyData({...denyData, impact: e.target.value})}>
+                              <option value="High">High</option>
+                              <option value="Medium">Medium</option>
+                              <option value="Low">Low</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", paddingTop: "20px", borderTop: "1px solid #e2e8f0" }}>
+                          <button className="cc-btn secondary" onClick={() => setShowDenyForm(false)} style={{ borderRadius: "8px", padding: "10px 20px" }}>Cancel</button>
+                          <button className="cc-btn primary" onClick={() => { setDenyData(prev => ({...prev, type: "REWORK"})); handleSubmitDeny("REWORK"); }} disabled={!denyData.reason} 
+                            style={{ borderRadius: "8px", backgroundColor: "#3b82f6", border: "none", color: "white", padding: "10px 24px", fontSize: "15px", fontWeight: "600" }}>
+                            Rework
+                          </button>
+                        </div>
+                      </>
+                    );
+                  } else {
+                    return (
+                      <>
+                        <div className="myt-form-group" style={{ marginBottom: "20px" }}>
+                          <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Task Dropdown</label>
+                          <select className="myt-input" style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px" }}
+                            value={denyData.deliverable || ""} onChange={e => setDenyData({...denyData, deliverable: e.target.value})}>
+                            <option value="">Select Task</option>
+                            <option value={task.title || "Current Task"}>{task.title || "Current Task"}</option>
+                          </select>
+                        </div>
+                        <div className="myt-form-group" style={{ marginBottom: "20px" }}>
+                          <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Reason</label>
+                          <textarea className="myt-input" style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", minHeight: "100px", fontSize: "14px" }}
+                            placeholder="Enter detailed reason..." value={denyData.reason || ""} onChange={e => setDenyData({...denyData, reason: e.target.value})} />
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "24px" }}>
+                          <div className="myt-form-group">
+                            <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Attachments (optional)</label>
+                            <div style={{ width: "100%", padding: "16px", border: "2px dashed #cbd5e1", borderRadius: "8px", textAlign: "center", cursor: "pointer", color: "#64748b", backgroundColor: "#f8fafc", position: "relative" }}>
+                              <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.webp" multiple onChange={(e) => setDenyData({...denyData, attachments: e.target.files})} style={{ opacity: 0, position: "absolute", top: 0, left: 0, width: "100%", height: "100%", cursor: "pointer" }} />
+                              <Paperclip size={18} style={{ verticalAlign: "middle", marginRight: "8px" }} /> <span style={{ fontSize: "14px" }}>Click or drag files to upload</span>
+                            </div>
+                          </div>
+                          <div className="myt-form-group">
+                            <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Impact</label>
+                            <select className="myt-input" style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px" }}
+                              value={denyData.impact || "Medium"} onChange={e => setDenyData({...denyData, impact: e.target.value})}>
+                              <option value="High">High</option>
+                              <option value="Low">Low</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", paddingTop: "20px", borderTop: "1px solid #e2e8f0" }}>
+                          <button className="cc-btn secondary" onClick={() => setShowDenyForm(false)} style={{ borderRadius: "8px", padding: "10px 20px" }}>Cancel</button>
+                          <button className="cc-btn primary" onClick={() => { setDenyData(prev => ({...prev, type: "REASSIGN"})); handleSubmitDeny("REASSIGN"); }} disabled={!denyData.reason} 
+                            style={{ borderRadius: "8px", backgroundColor: "#3b82f6", border: "none", color: "white", padding: "10px 24px", fontSize: "15px", fontWeight: "600" }}>
+                            Reassign
+                          </button>
+                        </div>
+                      </>
+                    );
+                  }
+                })()}
+              </div>
+            ) : (
+              <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                <p style={{ fontSize: "15px" }}>Please toggle <b>Raise Request</b> to proceed with rejection.</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -2478,12 +3542,55 @@ const MyTasks = ({ userRole, onLogout }) => {
     const executorId = rawTask.empId || rawTask.assignedTo || rawTask.executorId;
     const reviewerId = rawTask.reviewerId || rawTask.reviewer;
     const approverId = rawTask.approverId || rawTask.approver;
+    const assignedById = rawTask.assignedBy || rawTask.assigned_by || rawTask.createdBy;
     
-    const teamMembers = [
-      { empId: executorId, role: "Executor", label: "EX" },
-      { empId: reviewerId, role: "Reviewer", label: "RV" },
-      { empId: approverId, role: "Approver", label: "AP" }
-    ].filter(m => m.empId);
+    let teamMembers = [
+      ...((task.isIndividual || rawTask.taskSource === "INDIVIDUAL" || assignedById) && (assignedById || rawTask.assignedByNm) ? [{
+        empId: assignedById,
+        role: "Assigned By",
+        label: "AB",
+        fallbackName: rawTask.assignedByNm || rawTask.assignedByName,
+        fallbackPhoto: null
+      }] : []),
+      { 
+        empId: executorId, 
+        role: "Executor", 
+        label: "EX",
+        fallbackName: rawTask.executorName || rawTask.empNm || rawTask.empName || rawTask.assignedToName || rawTask.executorNm,
+        fallbackPhoto: rawTask.executorPhoto || rawTask.empPhoto
+      },
+      { 
+        empId: reviewerId, 
+        role: "Reviewer", 
+        label: "RV",
+        fallbackName: rawTask.reviewerName || rawTask.reviewerNm || rawTask.revNm || rawTask.revName,
+        fallbackPhoto: rawTask.reviewerPhoto || rawTask.revPhoto
+      },
+      { 
+        empId: approverId, 
+        role: "Approver", 
+        label: "AP",
+        fallbackName: rawTask.approverName || rawTask.approverNm || rawTask.appNm || rawTask.appName,
+        fallbackPhoto: rawTask.approverPhoto || rawTask.appPhoto
+      }
+    ].filter(m => m.empId || m.fallbackName);
+
+    // Fallback for dashboard upcoming tasks which might use an employees array
+    if (teamMembers.length === 0 && Array.isArray(rawTask.employees) && rawTask.employees.length > 0) {
+      teamMembers = rawTask.employees.map((e, idx) => {
+        let rawRole = e.participantType || e.stepType || e.taskRole || e.type || e.role || e.designation || "Executor";
+        let label = "EX";
+        if (rawRole.toUpperCase().includes("REVIEWER")) label = "RV";
+        if (rawRole.toUpperCase().includes("APPROVER")) label = "AP";
+        return {
+          empId: e.empId || e.employeeId || e.id || `emp-fallback-${idx}`,
+          role: rawRole,
+          label: label,
+          fallbackName: e.fullName || e.empName || e.name || e.employeeName,
+          fallbackPhoto: e.photoUrl || e.photo || e.profileImage || null
+        };
+      }).filter(m => m.fallbackName || m.empId !== `emp-fallback-undefined`);
+    }
 
     if (teamMembers.length === 0) {
       return <span style={{ color: "#94a3b8", fontSize: "12px" }}>—</span>;
@@ -2491,12 +3598,85 @@ const MyTasks = ({ userRole, onLogout }) => {
 
     return (
       <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+        <style>
+          {`
+            .team-member-hover {
+              position: relative;
+            }
+            .team-member-hover .member-tooltip {
+              opacity: 0;
+              visibility: hidden;
+              transition: all 0.2s ease-in-out;
+              position: absolute;
+              bottom: calc(100% + 8px);
+              left: 50%;
+              transform: translateX(-50%) translateY(4px);
+              background-color: #1e293b;
+              color: white;
+              padding: 6px 12px;
+              border-radius: 6px;
+              font-size: 12px;
+              font-weight: 500;
+              white-space: nowrap;
+              z-index: 50;
+              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+              pointer-events: none;
+            }
+            .team-member-hover:hover .member-tooltip {
+              opacity: 1;
+              visibility: visible;
+              transform: translateX(-50%) translateY(0);
+            }
+            .member-tooltip::after {
+              content: '';
+              position: absolute;
+              bottom: -4px;
+              left: 50%;
+              transform: translateX(-50%);
+              width: 0;
+              height: 0;
+              border-left: 5px solid transparent;
+              border-right: 5px solid transparent;
+              border-top: 5px solid #1e293b;
+            }
+          `}
+        </style>
         {teamMembers.map((member, idx) => {
-          const empName = getEmployeeName(member.empId, employeesList);
-          const initials = getEmployeeInitials(member.empId, employeesList);
-          const photo = getEmployeePhoto(member.empId, employeesList);
+          let empName = getEmployeeName(member.empId, employeesList);
+          let photo = getEmployeePhoto(member.empId, employeesList);
+          
+          // Fallback to embedded names if API list is empty or failed
+          if (!empName || empName === "Unknown" || empName.startsWith("User ")) {
+            // Try to find from rawTask.employees array if it exists (like in UserDashboard)
+            if (rawTask.employees && Array.isArray(rawTask.employees)) {
+              const embeddedEmp = rawTask.employees.find(e => 
+                String(e.empId || e.id || e.employeeId) === String(member.empId) || 
+                (e.taskRole && String(e.taskRole).toUpperCase().includes(member.label))
+              );
+              if (embeddedEmp) {
+                empName = embeddedEmp.fullName || embeddedEmp.name || embeddedEmp.employeeName || empName;
+                photo = embeddedEmp.photoUrl || embeddedEmp.profileImage || photo;
+              }
+            }
+            // If still unknown, use direct fallback fields
+            if ((!empName || empName === "Unknown" || empName.startsWith("User ")) && member.fallbackName) {
+              empName = member.fallbackName;
+            }
+            if (!photo && member.fallbackPhoto) {
+              photo = member.fallbackPhoto;
+            }
+          }
+          
+          let initials = "";
+          if (empName && empName !== "Unknown" && !empName.startsWith("User ")) {
+            const parts = empName.trim().split(" ");
+            initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0].substring(0, 2).toUpperCase();
+          } else {
+            initials = String(member.empId).substring(0, 2).toUpperCase();
+          }
           
           const roleColors = {
+            "Assigned By": { bg: "#6366F1", light: "#EEF2FF" },
             "Executor": { bg: "#3B82F6", light: "#DBEAFE" },
             "Reviewer": { bg: "#8B5CF6", light: "#EDE9FE" },
             "Approver": { bg: "#F59E0B", light: "#FEF3C7" }
@@ -2506,6 +3686,7 @@ const MyTasks = ({ userRole, onLogout }) => {
           return (
             <div 
               key={idx} 
+              className="team-member-hover"
               style={{ 
                 display: "flex",
                 alignItems: "center",
@@ -2514,11 +3695,16 @@ const MyTasks = ({ userRole, onLogout }) => {
                 borderRadius: "16px",
                 backgroundColor: color.light,
                 border: `1px solid ${color.bg}33`,
-                cursor: "default",
+                cursor: "pointer",
                 transition: "all 0.2s"
               }}
-              title={`${empName || 'Unknown'} (${member.role})`}
             >
+              {/* Tooltip */}
+              <div className="member-tooltip">
+                <span style={{ fontWeight: "600" }}>{empName || 'Unknown'}</span> 
+                <span style={{ color: color.bg, opacity: 0.9, marginLeft: "4px" }}>• {member.role}</span>
+              </div>
+
               <div style={{
                 width: "24px",
                 height: "24px",
@@ -2601,8 +3787,8 @@ const MyTasks = ({ userRole, onLogout }) => {
       // For actions other than 'view', execute then open detail
       switch(action.action) {
         case "start": 
-          await handleStartTask(task);
-          await openTaskDetail(task);
+          const startedTask = await handleStartTask(task);
+          await openTaskDetail(startedTask || task);
           break;
         case "update": 
           await openTaskDetail(task);
@@ -2662,6 +3848,14 @@ const MyTasks = ({ userRole, onLogout }) => {
   // MAIN RENDER
   // ============================================
 
+  const countTodo = tasks.filter(isToDo).length;
+  const countUpcoming = tasks.filter(isUpcomingTab).length;
+  const countCompleted = tasks.filter(isCompletedTab).length;
+  const countAllTasks = tasks.length;
+  
+  // Custom check for overdue
+  const countOverdue = tasks.filter(isTaskOverdue).length;
+
   const showTaskFilters = selectedStatus === "To Do" || selectedStatus === "All Statuses" || selectedStatus === "All Tasks";
 
   return (
@@ -2684,15 +3878,15 @@ const MyTasks = ({ userRole, onLogout }) => {
           )}
 
           {showDetailView && selectedTask ? (
-            <TaskDetailScreen 
-              task={selectedTask} 
-              onBack={() => {
+            renderTaskDetailScreen(
+              selectedTask, 
+              () => {
                 setShowDetailView(false);
                 setSelectedTask(null);
                 setShowDenyForm(false);
                 setUpdateRemarks("");
-              }} 
-            />
+              }
+            )
           ) : (
             /* Tasks List View */
             <>
@@ -2703,6 +3897,11 @@ const MyTasks = ({ userRole, onLogout }) => {
                   <div className="myt-metric-right"><div className="myt-metric-value">{countTodo}</div></div>
                 </div>
                 
+                <div className={`myt-metric-card sketch-layout upcoming ${selectedStatus === "Upcoming" ? "active" : ""}`} onClick={() => handleStatusFilterChange("Upcoming")} style={{ flex: "1", minWidth: "120px" }}>
+                  <div className="myt-metric-left"><div className="myt-metric-icon-box" style={{ backgroundColor: "#e0e7ff", color: "#4f46e5" }}><Calendar size={20} /></div><div className="myt-metric-text-group"><div className="myt-metric-title">Upcoming</div><div className="myt-metric-subtitle">Planned</div></div></div>
+                  <div className="myt-metric-right"><div className="myt-metric-value">{countUpcoming}</div></div>
+                </div>
+
                 <div className={`myt-metric-card sketch-layout completed ${selectedStatus === "Completed" ? "active" : ""}`} onClick={() => handleStatusFilterChange("Completed")} style={{ flex: "1", minWidth: "120px" }}>
                   <div className="myt-metric-left"><div className="myt-metric-icon-box green-circle"><CheckCircle2 size={20} /></div><div className="myt-metric-text-group"><div className="myt-metric-title">Closed</div><div className="myt-metric-subtitle">Done</div></div></div>
                   <div className="myt-metric-right"><div className="myt-metric-value">{countCompleted}</div></div>
@@ -2849,7 +4048,7 @@ const MyTasks = ({ userRole, onLogout }) => {
                         <th>
                           <div style={{ display: "flex", flexDirection: "column" }}>
                             <span style={{ fontSize: "12px", fontWeight: "700", color: "#0f172a", textTransform: "uppercase", marginBottom: "2px" }}>TASK</span>
-                            <span style={{ fontSize: "11px", fontWeight: "500", color: "#64748b" }}>Task ID / Name<br/>Milestone</span>
+                            <span style={{ fontSize: "11px", fontWeight: "500", color: "#64748b" }}>Task Code / Name<br/>Milestone</span>
                           </div>
                         </th>
                         <th>
@@ -2887,15 +4086,17 @@ const MyTasks = ({ userRole, onLogout }) => {
                           const processIcon = getProcessIcon(task.rawTask?.prcsYesActn);
                           const timeStatus = calculateTimeStatus(task.rawTask || task);
                           const priorityBadge = getPriorityBadge(task.priority);
-                          const isCompleted = task.rawStatus === "COMPLETED";
+                          const isCompleted = task.rawStatus === "COMPLETED" || task.rawStatus === "CLOSED";
                           const isOverdue = isTaskOverdue(task);
                           
                           return (
                             <tr key={task.id || task.taskId} onClick={() => { openTaskDetail(task); }} style={{ cursor: "pointer", backgroundColor: isOverdue ? "#FEF2F2" : "transparent" }}>
                               <td style={{ maxWidth: "250px" }}>
-                                <div style={{ fontWeight: "600", color: "#0f172a", marginBottom: "4px" }}>{task.id}</div>
+                                <div style={{ fontWeight: "600", color: "#0f172a", marginBottom: "4px" }}>{task.taskCode || task.id}</div>
                                 <div style={{ fontWeight: "500", color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={task.title}>{task.title}</div>
-                                <div style={{ fontSize: "12px", color: "#94a3b8" }}>{task.milestone}</div>
+                                {!task.isIndividual && task.project !== "Individual Task" && task.milestone && task.milestone !== "—" && (
+                                  <div style={{ fontSize: "12px", color: "#94a3b8" }}>{task.milestone}</div>
+                                )}
                               </td>
                               <td>
                                 {renderTeamMembers(task)}
@@ -2914,7 +4115,8 @@ const MyTasks = ({ userRole, onLogout }) => {
                               <td>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
                                   <span className="cc-status-badge" style={{ backgroundColor: progressBadge.bg, color: progressBadge.color, minWidth: "90px", textAlign: "center", display: "inline-block", textTransform: "uppercase", fontWeight: "700", padding: "4px 12px", borderRadius: "12px", fontSize: "11px" }}>{progressBadge.label}</span>
-                                  {processIcon && <div className="myt-custom-tooltip-wrap" title={processIcon.title} style={{ color: processIcon.color, display: "flex", alignItems: "center", cursor: "help" }}><processIcon.icon size={18} strokeWidth={2.5} /></div>}
+                                  {/* Hide process icon for closed tasks — only show Lead/Lag/On Time clock */}
+                                  {!isCompleted && processIcon && <div className="myt-custom-tooltip-wrap" title={processIcon.title} style={{ color: processIcon.color, display: "flex", alignItems: "center", cursor: "help" }}><processIcon.icon size={18} strokeWidth={2.5} /></div>}
                                   <div className="myt-custom-tooltip-wrap" title={timeStatus.title} style={{ color: timeStatus.color, display: "flex", alignItems: "center", cursor: "help" }}><timeStatus.icon size={18} strokeWidth={2.5} /></div>
                                 </div>
                               </td>

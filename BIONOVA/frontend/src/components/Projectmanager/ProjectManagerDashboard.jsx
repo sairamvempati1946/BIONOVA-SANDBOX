@@ -111,7 +111,7 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
 
   const navigate = useNavigate();
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState(null);
   
   const [projectsList, setProjectsList] = useState([]);
@@ -255,10 +255,13 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
     const projectTasks = tasksList.filter(t => milestoneIds.includes(t.milestoneId || t.mid || t.mId || t.drftMId || t.drft_m_id));
     
     const totalTasks = projectTasks.length;
-    const completedTasks = projectTasks.filter(t => (t.taskSts || t.tasksts || "").toUpperCase() === "COMPLETED").length;
+    const completedTasks = projectTasks.filter(t => {
+      const s = (t.taskSts || t.tasksts || "").toUpperCase();
+      return s === "COMPLETED" || s === "CLOSED";
+    }).length;
     const overdueTasks = projectTasks.filter(t => {
       const status = (t.taskSts || t.tasksts || "").toUpperCase();
-      if (status === "COMPLETED") return false;
+      if (status === "COMPLETED" || status === "CLOSED") return false;
       const end = t.endDt || t.enddt ? new Date(t.endDt || t.enddt) : null;
       return end && end < now;
     }).length;
@@ -304,21 +307,21 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
     });
     
     const taskStatusItems = [
-      { label: "Completed", count: completedTasks, pct: totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+      { label: "Closed", count: completedTasks, pct: totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
       { label: "In Progress", count: inProgressTasks, pct: totalTasks > 0 ? ((inProgressTasks / totalTasks) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
       { label: "Not Started", count: notStartedTasks, pct: totalTasks > 0 ? ((notStartedTasks / totalTasks) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
       { label: "Overdue", count: overdueTasks, pct: totalTasks > 0 ? ((overdueTasks / totalTasks) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
     ];
     
     const milestoneStatusItems = [
-      { label: "Completed", count: completedMilestones, pct: totalMilestones > 0 ? ((completedMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+      { label: "Closed", count: completedMilestones, pct: totalMilestones > 0 ? ((completedMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
       { label: "In Progress", count: inProgressMilestones, pct: totalMilestones > 0 ? ((inProgressMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
       { label: "Not Started", count: notStartedMilestones, pct: totalMilestones > 0 ? ((notStartedMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
       { label: "Overdue", count: overdueMilestones, pct: totalMilestones > 0 ? ((overdueMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
     ];
     
     const portfolioItems = [
-      { label: "Completed", count: completedMilestones, pct: totalMilestones > 0 ? ((completedMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+      { label: "Closed", count: completedMilestones, pct: totalMilestones > 0 ? ((completedMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
       { label: "In Progress", count: inProgressMilestones, pct: totalMilestones > 0 ? ((inProgressMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
       { label: "Not Started", count: notStartedMilestones, pct: totalMilestones > 0 ? ((notStartedMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
       { label: "Delayed", count: overdueMilestones, pct: totalMilestones > 0 ? ((overdueMilestones / totalMilestones) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
@@ -365,7 +368,7 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
         { 
           label: "Total Milestones", 
           value: totalMilestones, 
-          sub: `${completedMilestones} Completed`, 
+          sub: `${completedMilestones} Closed`, 
           icon: Flag, 
           color: "pm-purple" 
         },
@@ -393,7 +396,7 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
         { 
           label: "Total Tasks", 
           value: totalTasks, 
-          sub: `${completedTasks} Completed`, 
+          sub: `${completedTasks} Closed`, 
           icon: CheckSquare, 
           color: "pm-blue" 
         },
@@ -720,7 +723,7 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
           total: dashboardData.summary?.totalProjects || 0,
           percentage: (dashboardData.summary?.overallProgress || 0).toFixed(2) + "%",
           items: [
-            { label: "Completed", count: dashboardData.portfolioProgress?.completed || 0, pct: dashboardData.portfolioProgress?.total ? ((dashboardData.portfolioProgress.completed / dashboardData.portfolioProgress.total) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+            { label: "Closed", count: dashboardData.portfolioProgress?.completed || 0, pct: dashboardData.portfolioProgress?.total ? ((dashboardData.portfolioProgress.completed / dashboardData.portfolioProgress.total) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
             { label: "In Progress", count: dashboardData.portfolioProgress?.inProgress || 0, pct: dashboardData.portfolioProgress?.total ? ((dashboardData.portfolioProgress.inProgress / dashboardData.portfolioProgress.total) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
             { label: "Not Started", count: dashboardData.portfolioProgress?.notStarted || 0, pct: dashboardData.portfolioProgress?.total ? ((dashboardData.portfolioProgress.notStarted / dashboardData.portfolioProgress.total) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
             { label: "Delayed", count: dashboardData.portfolioProgress?.delayed || 0, pct: dashboardData.portfolioProgress?.total ? ((dashboardData.portfolioProgress.delayed / dashboardData.portfolioProgress.total) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
@@ -729,7 +732,7 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
         milestone: {
           total: dashboardData.milestoneStatus?.total || 0,
           items: [
-            { label: "Completed", count: dashboardData.milestoneStatus?.completed || 0, pct: dashboardData.milestoneStatus?.total ? ((dashboardData.milestoneStatus.completed / dashboardData.milestoneStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+            { label: "Closed", count: dashboardData.milestoneStatus?.completed || 0, pct: dashboardData.milestoneStatus?.total ? ((dashboardData.milestoneStatus.completed / dashboardData.milestoneStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
             { label: "In Progress", count: dashboardData.milestoneStatus?.inProgress || 0, pct: dashboardData.milestoneStatus?.total ? ((dashboardData.milestoneStatus.inProgress / dashboardData.milestoneStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
             { label: "Not Started", count: dashboardData.milestoneStatus?.notStarted || 0, pct: dashboardData.milestoneStatus?.total ? ((dashboardData.milestoneStatus.notStarted / dashboardData.milestoneStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
             { label: "Delayed", count: dashboardData.milestoneStatus?.delayed || 0, pct: dashboardData.milestoneStatus?.total ? ((dashboardData.milestoneStatus.delayed / dashboardData.milestoneStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
@@ -738,7 +741,7 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
         task: {
           total: dashboardData.taskStatus?.total || 0,
           items: [
-            { label: "Completed", count: dashboardData.taskStatus?.completed || 0, pct: dashboardData.taskStatus?.total ? ((dashboardData.taskStatus.completed / dashboardData.taskStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+            { label: "Closed", count: dashboardData.taskStatus?.completed || 0, pct: dashboardData.taskStatus?.total ? ((dashboardData.taskStatus.completed / dashboardData.taskStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
             { label: "In Progress", count: dashboardData.taskStatus?.inProgress || 0, pct: dashboardData.taskStatus?.total ? ((dashboardData.taskStatus.inProgress / dashboardData.taskStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
             { label: "Under Review", count: dashboardData.taskStatus?.underReview || 0, pct: dashboardData.taskStatus?.total ? ((dashboardData.taskStatus.underReview / dashboardData.taskStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#8b5cf6" },
             { label: "Not Started", count: dashboardData.taskStatus?.notStarted || 0, pct: dashboardData.taskStatus?.total ? ((dashboardData.taskStatus.notStarted / dashboardData.taskStatus.total) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
@@ -874,7 +877,10 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
     const msNotStarted = Math.max(0, msTotal - msCompleted - msDelayed - msInProgress);
 
     const tTotal = filteredTasks.length;
-    const tCompleted = filteredTasks.filter(t => (t.taskSts || t.tasksts || "").toUpperCase() === "COMPLETED").length;
+    const tCompleted = filteredTasks.filter(t => {
+      const s = (t.taskSts || t.tasksts || "").toUpperCase();
+      return s === "COMPLETED" || s === "CLOSED";
+    }).length;
     const tInProgress = filteredTasks.filter(t => {
       const s = (t.taskSts || t.tasksts || "").toUpperCase();
       return s === "WIP" || s === "IN_PROGRESS";
@@ -904,7 +910,7 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
         total: filteredProjects.length,
         percentage: avgProgress.toFixed(2) + "%",
         items: [
-          { label: "Completed", count: msCompleted, pct: msTotal ? ((msCompleted / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+          { label: "Closed", count: msCompleted, pct: msTotal ? ((msCompleted / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
           { label: "In Progress", count: msInProgress, pct: msTotal ? ((msInProgress / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
           { label: "Not Started", count: msNotStarted, pct: msTotal ? ((msNotStarted / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
           { label: "Delayed", count: msDelayed, pct: msTotal ? ((msDelayed / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
@@ -913,7 +919,7 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
       milestone: {
         total: msTotal,
         items: [
-          { label: "Completed", count: msCompleted, pct: msTotal ? ((msCompleted / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+          { label: "Closed", count: msCompleted, pct: msTotal ? ((msCompleted / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
           { label: "In Progress", count: msInProgress, pct: msTotal ? ((msInProgress / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
           { label: "Not Started", count: msNotStarted, pct: msTotal ? ((msNotStarted / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
           { label: "Delayed", count: msDelayed, pct: msTotal ? ((msDelayed / msTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
@@ -922,7 +928,7 @@ const ProjectManagerDashboard = ({ userRole, onLogout }) => {
       task: {
         total: tTotal,
         items: [
-          { label: "Completed", count: tCompleted, pct: tTotal ? ((tCompleted / tTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+          { label: "Closed", count: tCompleted, pct: tTotal ? ((tCompleted / tTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
           { label: "In Progress", count: tInProgress, pct: tTotal ? ((tInProgress / tTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
           { label: "Under Review", count: tUnderReview, pct: tTotal ? ((tUnderReview / tTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#8b5cf6" },
           { label: "Not Started", count: tNotStarted, pct: tTotal ? ((tNotStarted / tTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },

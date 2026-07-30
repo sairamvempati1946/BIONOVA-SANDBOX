@@ -12,6 +12,16 @@ const HorizontalProgress = ({ pct, color }) => (
 );
 
 const UserMilestone = ({ selectedProject, userTasks = [], allTasks = [], employees = [], profile = null }) => {
+  const getTaskStatusStr = (t) => {
+    if (!t) return '';
+    let sts = t.taskSts ?? t.task_sts ?? t.status ?? t.tasksts;
+    if (!sts) return '';
+    if (typeof sts === 'object') {
+      sts = sts.statusNm || sts.status_nm || sts.name || sts.status || '';
+    }
+    return String(sts).trim().toUpperCase();
+  };
+
   const milestones = (selectedProject?.milestones || []).map((m, i) => {
     const mId = m.mId || m.mid || m.id;
     const milestoneTasks = userTasks.filter(t => {
@@ -19,24 +29,30 @@ const UserMilestone = ({ selectedProject, userTasks = [], allTasks = [], employe
       return String(tMId) === String(mId);
     });
     const assignedCount = milestoneTasks.length;
-    const completedCount = milestoneTasks.filter(t => (t.taskSts || t.tasksts || "").toUpperCase() === 'COMPLETED').length;
+    const completedCount = milestoneTasks.filter(t => {
+      const s = getTaskStatusStr(t);
+      return s === 'COMPLETED' || s === 'CLOSED' || s === 'DONE' || s === 'COMPLETE';
+    }).length;
 
     const totalProgress = milestoneTasks.reduce((sum, t) => {
-      const statusVal = (t.taskSts || t.tasksts || "").toUpperCase();
-      return sum + (statusVal === 'COMPLETED' ? 100 : statusVal === 'WIP' ? 50 : (statusVal === 'SUBMIT_REVIEW' || statusVal === 'UNDER_REVIEW') ? 80 : 0);
+      const statusVal = getTaskStatusStr(t);
+      return sum + ((statusVal === 'COMPLETED' || statusVal === 'CLOSED' || statusVal === 'DONE' || statusVal === 'COMPLETE') ? 100 : (statusVal === 'WIP' || statusVal === 'IN_PROGRESS') ? 50 : (statusVal === 'SUBMIT_REVIEW' || statusVal === 'UNDER_REVIEW') ? 80 : 0);
     }, 0);
     const progressVal = assignedCount > 0 ? Math.round(totalProgress / assignedCount) : 0;
 
     let statusVal = m.status || "Not Started";
     if (assignedCount > 0) {
-      const allCompleted = milestoneTasks.every(t => (t.taskSts || t.tasksts || "").toUpperCase() === 'COMPLETED');
+      const allCompleted = milestoneTasks.every(t => {
+        const s = getTaskStatusStr(t);
+        return s === 'COMPLETED' || s === 'CLOSED' || s === 'DONE' || s === 'COMPLETE';
+      });
       const anyStarted = milestoneTasks.some(t => {
-        const s = (t.taskSts || t.tasksts || "").toUpperCase();
+        const s = getTaskStatusStr(t);
         return s === 'WIP' || s === 'IN_PROGRESS' || s === 'UNDER_REVIEW' || s === 'SUBMIT_REVIEW';
       });
 
       if (allCompleted) {
-        statusVal = "Completed";
+        statusVal = "Closed";
       } else if (anyStarted || progressVal > 0) {
         statusVal = "In Progress";
       } else {
@@ -56,7 +72,7 @@ const UserMilestone = ({ selectedProject, userTasks = [], allTasks = [], employe
       assigned: assignedCount,
       open: assignedCount - completedCount,
       status: statusVal,
-      color: statusVal === "Completed" ? "#10b981" : statusVal === "In Progress" ? "#195dfa" : "#9ca3af"
+      color: (statusVal === "Closed" || statusVal === "Completed") ? "#10b981" : statusVal === "In Progress" ? "#195dfa" : "#9ca3af"
     };
   });
 
@@ -76,7 +92,7 @@ const UserMilestone = ({ selectedProject, userTasks = [], allTasks = [], employe
   });
   const tasks = selectedMilestoneTasks.map(t => {
     const statusVal = (t.taskSts || t.tasksts || "").toUpperCase();
-    const progressVal = statusVal === 'COMPLETED' ? 100 : statusVal === 'WIP' ? 50 : (statusVal === 'SUBMIT_REVIEW' || statusVal === 'UNDER_REVIEW') ? 80 : 0;
+    const progressVal = (statusVal === 'COMPLETED' || statusVal === 'CLOSED') ? 100 : statusVal === 'WIP' ? 50 : (statusVal === 'SUBMIT_REVIEW' || statusVal === 'UNDER_REVIEW') ? 80 : 0;
     
     let assigneeName = "Unassigned";
     const assignedId = t.empId || t.empid;
@@ -106,6 +122,7 @@ const UserMilestone = ({ selectedProject, userTasks = [], allTasks = [], employe
 
   const getStatusClass = (status) => {
     switch (status) {
+      case 'Closed':
       case 'Completed': return 'status-completed';
       case 'In Progress': return 'status-inprogress';
       case 'Not Started': return 'status-notstarted';
@@ -146,8 +163,8 @@ const UserMilestone = ({ selectedProject, userTasks = [], allTasks = [], employe
                     onClick={() => setSelectedMilestone(m.id)}>
                   <td>
                     <div className="um-milestone-name-col">
-                      <div className={`um-milestone-circle ${m.status === 'Completed' ? 'completed' : m.status === 'Not Started' ? 'not-started' : 'in-progress'}`}>
-                        {m.status === 'Completed' ? <Check size={12} strokeWidth={4} /> : m.idx}
+                      <div className={`um-milestone-circle ${m.status === 'Closed' || m.status === 'Completed' ? 'completed' : m.status === 'Not Started' ? 'not-started' : 'in-progress'}`}>
+                        {m.status === 'Closed' || m.status === 'Completed' ? <Check size={12} strokeWidth={4} /> : m.idx}
                       </div>
                       <div className="um-mname-text" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <span className="um-mname" style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{m.name}</span>

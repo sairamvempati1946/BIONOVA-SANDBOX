@@ -70,7 +70,7 @@ export default function ProjectGanttChart({ project, userRole, compact = false }
     }
   };
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [ganttRows, setGanttRows] = useState([]);
   const [ganttDeps, setGanttDeps] = useState([]);
   const [timelineStart, setTimelineStart] = useState(new Date());

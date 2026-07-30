@@ -516,7 +516,7 @@ const Calendar = ({ userRole, onLogout }) => {
                       backgroundColor: showCompleted ? "#4b5563" : "transparent",
                       borderColor: "#4b5563"
                     }}>{showCompleted && <Check size={12} color="white"/>}</span>
-                    Show Completed
+                    Show Closed
                   </label>
                 </div>
               </div>

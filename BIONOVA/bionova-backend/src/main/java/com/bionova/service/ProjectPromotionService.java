@@ -102,8 +102,8 @@ public class ProjectPromotionService {
         } else {
             live.setNoOfDays(draft.getNoOfDays());
         }
-        live.setCoyId(draft.getCoyId());
-        live.setPltId(draft.getPltId());
+        live.setCoyId(draft.getCoyId() != null ? draft.getCoyId() : 0);
+        live.setPltId(draft.getPltId() != null ? draft.getPltId() : 0);
         live.setPrjObjtv(draft.getPrjObjtv());
         live.setExpDlvbls(draft.getExpDlvbls());
         live.setLogo(draft.getLogo());
@@ -190,6 +190,7 @@ public class ProjectPromotionService {
                 tl.setPrcsFlg(td.getPrcsFlg());
                 tl.setPrcsYesActn(td.getPrcsYesActn());
                 tl.setTaskSts(TaskStatusMaster.OPEN);
+                tl.setPriority(td.getPriority());
                 tl.setAddlRem(td.getAddlRem());
 
                 // Compute task working days

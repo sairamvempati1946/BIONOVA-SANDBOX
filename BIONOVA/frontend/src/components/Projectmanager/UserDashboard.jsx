@@ -125,7 +125,7 @@ const getStatusColor = (status) => {
 
 const getStatusLabel = (status) => {
   const s = status?.toUpperCase() || "";
-  if (s === 'COMPLETED' || s === 'DONE' || s === 'CLOSED') return 'Completed';
+  if (s === 'COMPLETED' || s === 'DONE' || s === 'CLOSED') return 'Closed';
   if (s === 'IN_PROGRESS' || s === 'WIP' || s === 'ACTIVE') return 'In Progress';
   if (s === 'HOLD' || s === 'ON_HOLD') return 'Hold';
   if (s === 'DRAFT') return 'Draft';
@@ -338,12 +338,40 @@ const UserDashboard = ({ userRole, onLogout }) => {
   const navigate = useNavigate();
   
   // 7.1: State Management
-  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState(() => {
+    try {
+      const cached = localStorage.getItem("cached_user_dashboard");
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [dashboardData, setDashboardData] = useState(null);
-  const [userName, setUserName] = useState("");
-  const [userRoleState, setUserRoleState] = useState("");
-  const [empId, setEmpId] = useState(null);
+  const [userName, setUserName] = useState(() => {
+    try {
+      const cached = localStorage.getItem("cached_user_dashboard");
+      return cached ? JSON.parse(cached).fullName || "" : "";
+    } catch {
+      return "";
+    }
+  });
+  const [userRoleState, setUserRoleState] = useState(() => {
+    try {
+      const cached = localStorage.getItem("cached_user_dashboard");
+      return cached ? JSON.parse(cached).role || "" : "";
+    } catch {
+      return "";
+    }
+  });
+  const [empId, setEmpId] = useState(() => {
+    try {
+      const cached = localStorage.getItem("cached_user_dashboard");
+      return cached ? JSON.parse(cached).empId || null : null;
+    } catch {
+      return null;
+    }
+  });
 
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
@@ -372,7 +400,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
 
   // 7.2: Data Fetching
   const fetchDashboardData = async () => {
-    setLoading(true);
+    if (!dashboardData) setLoading(true);
     setError(null);
 
     try {
@@ -381,9 +409,12 @@ const UserDashboard = ({ userRole, onLogout }) => {
         throw new Error("Authentication token not found. Please login again.");
       }
 
-      const response = await fetch(`${API_BASE}/user-dashboard`, {
-        headers: authHeaders()
-      });
+      const [response, taskRes, msRes, profRes] = await Promise.all([
+        fetch(`${API_BASE}/user-dashboard`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/task-live`, { headers: authHeaders() }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`${API_BASE}/milestone-live`, { headers: authHeaders() }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`${API_BASE}/profile`, { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null)
+      ]);
 
       if (!response.ok) {
         const errMsg = await response.text().catch(() => "Failed to fetch dashboard data");
@@ -391,24 +422,23 @@ const UserDashboard = ({ userRole, onLogout }) => {
       }
 
       const data = await response.json();
+      const allTasksList = Array.isArray(taskRes) ? taskRes : (taskRes?.data || []);
+      const allMilestonesList = Array.isArray(msRes) ? msRes : (msRes?.data || []);
+      const currentEmpId = profRes?.empId || data.empId;
 
       const sc = data.taskStatusCounts || {};
-      const completedCount = sc["Completed"] || 0;
+      const completedCount = sc["Closed"] || sc["CLOSED"] || sc["Completed"] || sc["COMPLETED"] || 0;
       const wipCount = sc["In Progress"] || 0;
       const overdueCount = sc["Overdue"] || 0;
       const openCount = sc["Open"] || 0;
       const draftCount = sc["Draft"] || 0;
       const underReviewCount = sc["Under Review"] || 0;
 
-      // ============================================================
-      // FIX: Assigned Tasks should include completed tasks too
-      // ============================================================
-      const baseAssigned = data.assignedTasksCard?.currentCount || data.myTasksCount || 0;
-      const totalAssignedTasks = baseAssigned + completedCount;
+      const totalAssignedTasks = data.assignedTasksCard?.currentCount || data.myTasksCount || 0;
 
       const taskCounts = {
-        assigned: totalAssignedTasks,  // Now includes completed tasks
-        open: openCount + draftCount,
+        assigned: totalAssignedTasks,
+        open: openCount,
         inProgress: wipCount,
         overdue: overdueCount,
         completed: completedCount,
@@ -432,7 +462,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
 
       const todoList = (data.todoList || []).map((t, index) => ({
         id: t.taskId || index + 100,
-        code: t.taskCode || `TSK-${t.taskId || index + 100}`,
+        code: t.taskCode || t.taskCd || (t.taskSource === "INDIVIDUAL" ? `IND-${t.taskId || index + 100}` : `TSK-${t.taskId || index + 100}`),
         name: t.taskName || "",
         project: t.projectCodeName || t.projectName || "",
         milestone: "",
@@ -458,12 +488,13 @@ const UserDashboard = ({ userRole, onLogout }) => {
 
       const upcomingTasks = (data.upcomingTasks || []).map((t, index) => ({
         id: t.taskId || index + 100,
-        code: t.taskCode || `TSK-${t.taskId || index + 100}`,
+        code: t.taskCode || t.taskCd || `TSK-${t.taskId || index + 100}`,
         name: t.taskName || "",
         project: t.projectCodeName || t.projectName || "",
         startDate: t.startDate,
         endDate: t.dueDate,
-        status: "OPEN",
+        status: "UPCOMING",
+        isUpcoming: true,
         processStatus: (t.processStatus || t.subStatus || "").toUpperCase(),
         timeStatus: (t.timeStatus || "").toUpperCase(),
         employees: (t.employees || []).map(e => {
@@ -483,90 +514,27 @@ const UserDashboard = ({ userRole, onLogout }) => {
         return new Date(a.startDate) - new Date(b.startDate);
       });
 
+      // Filter tasks & milestones matching Projects.jsx calculation
+      const userTasks = allTasksList.filter(t => 
+        (t.empId || t.empid) === currentEmpId || 
+        (t.reviewer) === currentEmpId || 
+        (t.approver) === currentEmpId
+      );
+
+      const userMilestones = allMilestonesList.filter(m => {
+        const mId = String(m.mId || m.mid || m.id);
+        return userTasks.some(t => String(t.mId || t.mid || t.milestoneId || t.drftMId || t.drft_m_id) === mId);
+      });
+
       // ============================================================
-      // MY PROJECTS - ENHANCED PROGRESS EXTRACTION
+      // MY PROJECTS - DIRECT FROM BACKEND STORED PROCEDURE
       // ============================================================
       const myProjects = (data.myProjects || []).map(p => {
-        const extractProgress = (obj) => {
-          if (obj.status && obj.status.toUpperCase() === 'COMPLETED') {
-            return 100;
-          }
-          
-          const knownKeys = [
-            'progress', 'completionPercentage', 'completion', 'percentage',
-            'progressPercent', 'percentComplete', 'completionPercent',
-            'projectProgress', 'progressValue', 'pctComplete',
-            'progressPercentage', 'completePercent', 'progressPct',
-            'completionPct', 'percent', 'pct'
-          ];
-          
-          for (const key of knownKeys) {
-            if (obj[key] !== undefined && obj[key] !== null) {
-              let val = obj[key];
-              if (typeof val === 'string') {
-                val = parseFloat(val.replace('%', ''));
-              }
-              if (!isNaN(val) && val > 0 && val <= 1) {
-                return val * 100;
-              }
-              if (!isNaN(val) && val >= 0 && val <= 100) {
-                return val;
-              }
-            }
-          }
-          
-          const allKeys = Object.keys(obj);
-          for (const key of allKeys) {
-            const lowerKey = key.toLowerCase();
-            if (lowerKey.includes('id') || lowerKey.includes('count') || 
-                lowerKey.includes('number') || lowerKey.includes('total')) continue;
-            
-            if (lowerKey.includes('progress') || lowerKey.includes('completion') || 
-                lowerKey.includes('percent') || lowerKey.includes('pct')) {
-              let val = obj[key];
-              if (typeof val === 'string') {
-                val = parseFloat(val.replace('%', ''));
-              }
-              if (typeof val === 'number' && val >= 0 && val <= 100) {
-                return val;
-              }
-              if (typeof val === 'number' && val > 0 && val <= 1) {
-                return val * 100;
-              }
-            }
-          }
-          
-          for (const key of allKeys) {
-            const val = obj[key];
-            if (typeof val === 'number' && val >= 0 && val <= 100 && 
-                key !== 'id' && key !== 'projectId' && key !== 'employeeId') {
-              return val;
-            }
-            if (typeof val === 'number' && val > 0 && val <= 1 && 
-                key !== 'id' && key !== 'projectId' && key !== 'employeeId') {
-              return val * 100;
-            }
-            if (typeof val === 'string') {
-              const parsed = parseFloat(val.replace('%', ''));
-              if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
-                return parsed;
-              }
-              if (!isNaN(parsed) && parsed > 0 && parsed <= 1) {
-                return parsed * 100;
-              }
-            }
-          }
-          
-          return 0;
-        };
-        
-        const progress = extractProgress(p);
-        
         return {
           id: p.projectId || p.id,
           name: p.projectName || p.name || "",
           status: p.status || "Active",
-          progress: progress,
+          progress: typeof p.progress === 'number' ? Math.round(p.progress) : 0,
           quality: p.quality || "",
           employees: p.tasksAssigned || p.employeeCount || 0,
           client: p.clientName || "",
@@ -638,7 +606,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
       const delayedProjects = myProjects.filter(p => p.status?.toUpperCase() === 'DELAYED' || p.status?.toUpperCase() === 'OVERDUE' || p.status?.toUpperCase() === 'HOLD').length;
       
       const portfolioItems = [
-        { label: "Completed", count: completedProjects, pct: projectCount > 0 ? ((completedProjects / projectCount) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+        { label: "Closed", count: completedProjects, pct: projectCount > 0 ? ((completedProjects / projectCount) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
         { label: "In Progress", count: inProgressProjects, pct: projectCount > 0 ? ((inProgressProjects / projectCount) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
         { label: "Not Started", count: notStartedProjects, pct: projectCount > 0 ? ((notStartedProjects / projectCount) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
         { label: "Delayed", count: delayedProjects, pct: projectCount > 0 ? ((delayedProjects / projectCount) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
@@ -673,7 +641,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
       }
       
       const milestoneItems = [
-        { label: "Completed", count: milestoneCompleted, pct: milestoneTotal > 0 ? ((milestoneCompleted / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+        { label: "Closed", count: milestoneCompleted, pct: milestoneTotal > 0 ? ((milestoneCompleted / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
         { label: "In Progress", count: milestoneInProgress, pct: milestoneTotal > 0 ? ((milestoneInProgress / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
         { label: "Not Started", count: milestoneNotStarted, pct: milestoneTotal > 0 ? ((milestoneNotStarted / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
         { label: "Delayed", count: milestoneDelayed, pct: milestoneTotal > 0 ? ((milestoneDelayed / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
@@ -681,7 +649,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
       
       const taskTotal = taskCounts.assigned || 0;
       const taskStatusItems = [
-        { label: "Completed", count: taskCounts.completed || 0, pct: taskTotal > 0 ? ((taskCounts.completed / taskTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
+        { label: "Closed", count: taskCounts.completed || 0, pct: taskTotal > 0 ? ((taskCounts.completed / taskTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
         { label: "In Progress", count: taskCounts.inProgress || 0, pct: taskTotal > 0 ? ((taskCounts.inProgress / taskTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
         { label: "Under Review", count: underReviewCount || 0, pct: taskTotal > 0 ? ((underReviewCount / taskTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#8b5cf6" },
         { label: "Not Started", count: taskCounts.open || 0, pct: taskTotal > 0 ? ((taskCounts.open / taskTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
@@ -710,6 +678,11 @@ const UserDashboard = ({ userRole, onLogout }) => {
       };
 
       setDashboardData(dashboard);
+      try {
+        localStorage.setItem("cached_user_dashboard", JSON.stringify(dashboard));
+      } catch (e) {
+        console.warn("Failed to save dashboard to cache", e);
+      }
       setUserName(dashboard.fullName);
       setUserRoleState(dashboard.role);
       setEmpId(dashboard.empId);
@@ -742,12 +715,13 @@ const UserDashboard = ({ userRole, onLogout }) => {
   };
 
   const handleTaskClick = (task) => {
-    setSelectedTask(task);
-    setShowTaskDetail(true);
+    const taskId = task?.taskId || task?.id;
+    navigate('/my-tasks', { state: { selectedTaskId: taskId } });
   };
 
   const handleProjectClick = (project) => {
-    navigate(`/project-details/${project.id}`, { state: { projectProgress: project.progress } });
+    const projId = project?.id || project?.projectId || project?.prjId;
+    navigate('/projects', { state: { selectedProjectId: projId } });
   };
 
   const handleStartTask = async (task) => {
@@ -830,7 +804,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
     csvContent += `Open Tasks,${dashboardData.taskCounts.open || 0}\n`;
     csvContent += `In Progress,${dashboardData.taskCounts.inProgress || 0}\n`;
     csvContent += `Overdue Tasks,${dashboardData.taskCounts.overdue || 0}\n`;
-    csvContent += `Completed Tasks,${dashboardData.taskCounts.completed || 0}\n\n`;
+    csvContent += `Closed Tasks,${dashboardData.taskCounts.completed || 0}\n\n`;
     
     csvContent += "My To-Do List\nTask Name,Project,Due Date,Status\n";
     dashboardData.todoList.forEach(t => {
@@ -961,14 +935,22 @@ const UserDashboard = ({ userRole, onLogout }) => {
     return new Date(a.startDate) - new Date(b.startDate);
   });
 
-  const displayedTasks = showAllTasks ? todoList : todoList.slice(0, 5);
+  const activeTodoList = todoList.filter(t => {
+    const s = t.status?.toUpperCase() || "";
+    return s !== "COMPLETED" && s !== "CLOSED" && s !== "DONE";
+  });
+  const displayedTasks = showAllTasks ? activeTodoList : activeTodoList.slice(0, 5);
   const displayedUpcoming = showAllUpcoming ? sortedUpcomingTasks : sortedUpcomingTasks.slice(0, 5);
   const totalTasks = taskCounts.assigned || 0;
 
   const pieData = [
-    { label: "Completed", value: taskCounts.completed || 0, color: "#16a34a" },
+    { label: "Closed", value: taskCounts.completed || 0, color: "#16a34a" },
     { label: "In Progress", value: taskCounts.inProgress || 0, color: "#f59e0b" },
     { label: "Open", value: taskCounts.open || 0, color: "#2563eb" },
+  ];
+
+  const pieDataDetails = [
+    ...pieData,
     { label: "Overdue", value: taskCounts.overdue || 0, color: "#ef4444" },
   ];
 
@@ -1065,7 +1047,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
               </div>
               <div className="ud-stat-info">
                 <div className="ud-stat-value">{taskCounts.completed || 0}</div>
-                <div className="ud-stat-label">Completed Tasks</div>
+                <div className="ud-stat-label">Closed Tasks</div>
                 <div className="ud-stat-sub">Well done!</div>
               </div>
             </div>
@@ -1091,8 +1073,8 @@ const UserDashboard = ({ userRole, onLogout }) => {
             <div className="ud-card ud-todo-panel">
               <div className="ud-card-header">
                 <span className="ud-card-title">My To-Do List</span>
-                <button className="ud-view-all-btn" onClick={() => setShowAllTasks(!showAllTasks)}>
-                  {showAllTasks ? 'Show Less' : 'View All'} <ArrowUpRight size={14} />
+                <button className="ud-view-all-btn" onClick={() => navigate("/my-tasks", { state: { selectedStatus: "To Do" } })}>
+                  View All <ArrowUpRight size={14} />
                 </button>
               </div>
               <div className="ud-todo-list-container">
@@ -1199,7 +1181,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
                   <PieChartComponent data={pieData} size={120} />
                 </div>
                 <div className="ud-pie-data-bottom">
-                  {pieData.map((item, index) => (
+                  {pieDataDetails.map((item, index) => (
                     <div key={index} className="ud-pie-data-row">
                       <span className="ud-pie-data-dot" style={{ background: item.color }} />
                       <span className="ud-pie-data-label">{item.label}</span>
@@ -1223,14 +1205,14 @@ const UserDashboard = ({ userRole, onLogout }) => {
             <div className="ud-card ud-upcoming-panel">
               <div className="ud-card-header">
                 <span className="ud-card-title">Upcoming Tasks</span>
-                <button className="ud-view-all-btn" onClick={() => setShowAllUpcoming(!showAllUpcoming)}>
-                  {showAllUpcoming ? 'Show Less' : 'View All'} <ArrowUpRight size={14} />
+                <button className="ud-view-all-btn" onClick={() => navigate("/my-tasks", { state: { selectedStatus: "Upcoming" } })}>
+                  View All <ArrowUpRight size={14} />
                 </button>
               </div>
               <div className="ud-upcoming-list">
                 {displayedUpcoming && displayedUpcoming.length > 0 ? (
                   displayedUpcoming.map((task, index) => (
-                    <div className="ud-upcoming-item" key={task.id || index} onClick={() => handleTaskClick(task)}>
+                    <div className="ud-upcoming-item" key={task.id || index} onClick={() => navigate("/my-tasks", { state: { selectedStatus: "Upcoming" } })} style={{ cursor: 'pointer' }}>
                       <div className="ud-upcoming-date">
                         <span className="ud-upcoming-day">
                           {task.startDate ? new Date(task.startDate).getDate() : '--'}
@@ -1294,7 +1276,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
               </div>
               <div className="ud-projects-list">
                 {projects && projects.length > 0 ? (
-                  projects.slice(0, 3).map((project, index) => {
+                  projects.slice(0, 5).map((project, index) => {
                     let progressValue = project.progress || 0;
                     if (progressValue > 0 && progressValue <= 1) {
                       progressValue = progressValue * 100;
@@ -1377,7 +1359,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
                     <div className="ud-stat-icon green"><CheckCircle2 size={18} /></div>
                     <div className="ud-stat-info">
                       <span className="ud-stat-value">{performanceData.tasksCompleted || 0}</span>
-                      <span className="ud-stat-label">Completed</span>
+                      <span className="ud-stat-label">Closed</span>
                     </div>
                   </div>
                   <div className="ud-performance-stat">
@@ -1513,7 +1495,7 @@ const UserDashboard = ({ userRole, onLogout }) => {
               )}
             </div>
             <div className="ud-modal-footer">
-              {(selectedTask.status === "OPEN" || selectedTask.status === "PENDING" || selectedTask.status === "NOT_STARTED") && (
+              {!selectedTask.isUpcoming && selectedTask.status !== "UPCOMING" && selectedTask.status !== "Upcoming" && (selectedTask.status === "OPEN" || selectedTask.status === "PENDING" || selectedTask.status === "NOT_STARTED") && (
                 <button 
                   className="ud-btn-primary" 
                   onClick={() => { 

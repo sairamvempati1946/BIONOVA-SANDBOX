@@ -251,6 +251,21 @@ const CompanyCreation = ({ onLogout, userRole }) => {
           workingDaysPerWeek: company.wrkDaysPerWk || localData[company.coyId]?.workingDaysPerWeek || ""
         }));
         setCompanies(enriched);
+        setFormData(prev => {
+          if (!prev.companyCode || /^CMP-\d+$/i.test(prev.companyCode)) {
+            let maxNum = 0;
+            enriched.forEach(c => {
+              const code = c.coyCd || c.companyCode || "";
+              const match = code.match(/^CMP-(\d+)$/i);
+              if (match) {
+                const num = parseInt(match[1], 10);
+                if (!isNaN(num) && num > maxNum) maxNum = num;
+              }
+            });
+            return { ...prev, companyCode: `CMP-${String(maxNum + 1).padStart(3, '0')}` };
+          }
+          return prev;
+        });
       }
 
       if (stateRes.ok) {
@@ -534,10 +549,29 @@ const CompanyCreation = ({ onLogout, userRole }) => {
 
 
 
-  const handleResetForm = () => {
+  const generateCompanyCode = (cList = companies) => {
+    let maxNum = 0;
+    if (Array.isArray(cList)) {
+      cList.forEach(c => {
+        const code = c.coyCd || c.companyCode || "";
+        const match = code.match(/^CMP-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+          }
+        }
+      });
+    }
+    const nextNum = maxNum + 1;
+    return `CMP-${String(nextNum).padStart(3, '0')}`;
+  };
+
+  const handleResetForm = (cList = companies) => {
+    const autoCode = generateCompanyCode(cList);
     setFormData({
       companyName: "",
-      companyCode: "",
+      companyCode: autoCode,
       under: "",
       cinNumber: "",
       gstNumber: "",
@@ -948,6 +982,9 @@ const CompanyCreation = ({ onLogout, userRole }) => {
   });
   const projectsCount = companyProjectsFiltered.length;
 
+  const companySubsidiaries = companies.filter(c => Number(c.prntCoyId) === Number(editingId));
+  const subsidiariesCount = companySubsidiaries.length;
+
   return (
     <div className="cc-shell-container">
       <Sidebar userRole={userRole} onLogout={onLogout} />
@@ -1025,7 +1062,7 @@ const CompanyCreation = ({ onLogout, userRole }) => {
                           <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px', marginTop: 0 }}>
                             Click on any card below to view its corresponding list details.
                           </p>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: '12px' }}>
                             {/* Card 1: Plants */}
                             <div 
                               className="cc-overview-card" 
@@ -1146,6 +1183,30 @@ const CompanyCreation = ({ onLogout, userRole }) => {
                                 P
                               </div>
                             </div>
+                            {/* Card 6: Subsidiaries */}
+                            <div 
+                              className="cc-overview-card" 
+                              onClick={() => setActiveOverviewTab(activeOverviewTab === 'subsidiaries' ? null : 'subsidiaries')}
+                              style={{ 
+                                background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)', 
+                                border: activeOverviewTab === 'subsidiaries' ? '2px solid #0d9488' : '1px solid #99f6e4', 
+                                borderRadius: '12px', 
+                                padding: '20px', 
+                                display: 'flex', 
+                                flexDirection: 'column', 
+                                position: 'relative', 
+                                overflow: 'hidden',
+                                cursor: 'pointer',
+                                transform: activeOverviewTab === 'subsidiaries' ? 'scale(1.02)' : 'none',
+                                boxShadow: activeOverviewTab === 'subsidiaries' ? '0 4px 12px rgba(13,148,136,0.15)' : 'none'
+                              }}
+                            >
+                              <span style={{ fontSize: '12px', fontWeight: '600', color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Subsidiaries</span>
+                              <strong style={{ fontSize: '28px', color: '#115e59', marginTop: '8px', zIndex: 1 }}>{subsidiariesCount}</strong>
+                              <div style={{ position: 'absolute', right: '10px', bottom: '-15px', opacity: 0.1, color: '#115e59', fontSize: '70px', fontWeight: 'bold', lineHeight: 1, pointerEvents: 'none', fontFamily: 'sans-serif' }}>
+                                S
+                              </div>
+                            </div>
                           </div>
                         </div>
 
@@ -1166,7 +1227,8 @@ const CompanyCreation = ({ onLogout, userRole }) => {
                                 {activeOverviewTab === 'employees' && <Users size={16} style={{ color: '#7c3aed' }} />}
                                 {activeOverviewTab === 'departments' && <Briefcase size={16} style={{ color: '#ea580c' }} />}
                                 {activeOverviewTab === 'projects' && <FileText size={16} style={{ color: '#db2777' }} />}
-                                Associated {activeOverviewTab} List
+                                {activeOverviewTab === 'subsidiaries' && <Building2 size={16} style={{ color: '#0d9488' }} />}
+                                Associated {activeOverviewTab === 'subsidiaries' ? 'Subsidiary' : activeOverviewTab} List
                               </h4>
                               <button 
                                 type="button" 
@@ -1235,6 +1297,16 @@ const CompanyCreation = ({ onLogout, userRole }) => {
                                       <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Status</th>
                                       <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Start Date</th>
                                       <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>End Date</th>
+                                    </tr>
+                                  )}
+                                  {activeOverviewTab === 'subsidiaries' && (
+                                    <tr>
+                                      <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>S.NO</th>
+                                      <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Company Code</th>
+                                      <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Company Name</th>
+                                      <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>CIN Number</th>
+                                      <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>GST Number</th>
+                                      <th style={{ padding: '10px 12px', color: '#64748b', fontWeight: '700' }}>Status</th>
                                     </tr>
                                   )}
                                 </thead>
@@ -1392,6 +1464,41 @@ const CompanyCreation = ({ onLogout, userRole }) => {
                                       <tr>
                                         <td colSpan={7} style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
                                           No projects found for this company.
+                                        </td>
+                                      </tr>
+                                    )
+                                  )}
+                                  {activeOverviewTab === 'subsidiaries' && (
+                                    companySubsidiaries.length > 0 ? (
+                                      companySubsidiaries.map((sub, idx) => (
+                                        <tr key={sub.coyId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                          <td style={{ padding: '10px 12px', color: '#475569' }}>{idx + 1}</td>
+                                          <td style={{ padding: '10px 12px' }}>
+                                            <span style={{ backgroundColor: '#f0fdfa', padding: '2px 6px', borderRadius: '4px', fontWeight: '600', color: '#0f766e' }}>
+                                              {sub.coyCd || sub.coyCode || 'N/A'}
+                                            </span>
+                                          </td>
+                                          <td style={{ padding: '10px 12px', fontWeight: '500', color: '#0f172a' }}>{sub.coyNm || sub.coyName || 'N/A'}</td>
+                                          <td style={{ padding: '10px 12px', color: '#475569' }}>{sub.cin || sub.cinNo || sub.cinNumber || sub.cinNum || 'N/A'}</td>
+                                          <td style={{ padding: '10px 12px', color: '#475569' }}>{sub.gstNum || sub.gstNo || sub.gstNumber || 'N/A'}</td>
+                                          <td style={{ padding: '10px 12px' }}>
+                                            <span style={{
+                                              padding: '2px 8px',
+                                              borderRadius: '12px',
+                                              fontSize: '11px',
+                                              fontWeight: '600',
+                                              backgroundColor: String(sub.status || 'ACTIVE').toUpperCase() === 'ACTIVE' ? '#dcfce7' : '#fee2e2',
+                                              color: String(sub.status || 'ACTIVE').toUpperCase() === 'ACTIVE' ? '#15803d' : '#991b1b'
+                                            }}>
+                                              {sub.status || 'Active'}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      ))
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
+                                          No subsidiary companies found for this company.
                                         </td>
                                       </tr>
                                     )
@@ -1563,7 +1670,9 @@ const CompanyCreation = ({ onLogout, userRole }) => {
                             onChange={handleInputChange} 
                             placeholder="Select Parent Company"
                             options={[
-                              ...companies.map(c => ({ value: c.coyId, label: c.coyNm })),
+                              ...companies
+                                .filter(c => !editingId || Number(c.coyId) !== Number(editingId))
+                                .map(c => ({ value: c.coyId, label: c.coyNm })),
                               { value: "Independent", label: "Independent (No Parent)" }
                             ]}
                           />

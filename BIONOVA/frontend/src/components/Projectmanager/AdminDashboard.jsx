@@ -306,14 +306,14 @@ const AdminDashboard = ({ userRole, onLogout }) => {
   
   const td = {
     total: filteredTasks.length,
-    completed: filteredTasks.filter(t => (t.taskSts || "").toUpperCase() === "COMPLETED").length,
+    completed: filteredTasks.filter(t => { const s = (t.taskSts || "").toUpperCase(); return s === "COMPLETED" || s === "CLOSED"; }).length,
     progress: filteredTasks.filter(t => wipStatuses.includes((t.taskSts || "").toUpperCase())).length,
-    todo: filteredTasks.filter(t => !["COMPLETED", ...wipStatuses].includes((t.taskSts || "").toUpperCase())).length,
-    overdue: filteredTasks.filter(t => (t.taskSts || "").toUpperCase() !== "COMPLETED" && t.endDt && new Date(t.endDt) < now).length
+    todo: filteredTasks.filter(t => !["COMPLETED", "CLOSED", ...wipStatuses].includes((t.taskSts || "").toUpperCase())).length,
+    overdue: filteredTasks.filter(t => { const s = (t.taskSts || "").toUpperCase(); return s !== "COMPLETED" && s !== "CLOSED" && t.endDt && new Date(t.endDt) < now; }).length
   };
 
   const overdueWip = filteredTasks.filter(t => wipStatuses.includes((t.taskSts || "").toUpperCase()) && t.endDt && new Date(t.endDt) < now).length;
-  const overdueTodo = filteredTasks.filter(t => !["COMPLETED", ...wipStatuses].includes((t.taskSts || "").toUpperCase()) && t.endDt && new Date(t.endDt) < now).length;
+  const overdueTodo = filteredTasks.filter(t => !["COMPLETED", "CLOSED", ...wipStatuses].includes((t.taskSts || "").toUpperCase()) && t.endDt && new Date(t.endDt) < now).length;
   const progressOnTime = Math.max(0, td.progress - overdueWip);
   const todoOnTime = Math.max(0, td.todo - overdueTodo);
 
@@ -473,7 +473,7 @@ const AdminDashboard = ({ userRole, onLogout }) => {
                 </div>
                 <div className="db-chart-legend">
                   <div className="legend-item"><span className="dot dot-green"></span> On Track <b>{pd.track}</b></div>
-                  <div className="legend-item"><span className="dot dot-blue"></span> Completed <b>{pd.completed}</b></div>
+                  <div className="legend-item"><span className="dot dot-blue"></span> Closed <b>{pd.completed}</b></div>
                   <div className="legend-item"><span className="dot dot-orange"></span> At Risk <b>{pd.risk}</b></div>
                   <div className="legend-item"><span className="dot dot-red"></span> Delayed <b>{pd.delayed}</b></div>
                 </div>
@@ -498,7 +498,7 @@ const AdminDashboard = ({ userRole, onLogout }) => {
                 </div>
                 <div className="db-chart-legend">
                   <div className="legend-item"><span className="dot" style={{backgroundColor: '#9ca3af'}}></span> Total <b>{md.total}</b></div>
-                  <div className="legend-item"><span className="dot dot-green"></span> Completed <b>{md.completed}</b></div>
+                  <div className="legend-item"><span className="dot dot-green"></span> Closed <b>{md.completed}</b></div>
                   <div className="legend-item"><span className="dot dot-blue"></span> In Progress <b>{Math.max(0, md.progress - md.overdue)}</b></div>
                   <div className="legend-item"><span className="dot dot-red"></span> Overdue <b>{md.overdue}</b></div>
                 </div>
@@ -522,7 +522,7 @@ const AdminDashboard = ({ userRole, onLogout }) => {
                   </div>
                 </div>
                 <div className="db-chart-legend">
-                  <div className="legend-item"><span className="dot dot-green"></span> Completed <b>{td.completed}</b></div>
+                  <div className="legend-item"><span className="dot dot-green"></span> Closed <b>{td.completed}</b></div>
                   <div className="legend-item"><span className="dot dot-blue"></span> In Progress <b>{progressOnTime}</b></div>
                   <div className="legend-item"><span className="dot dot-orange"></span> To Do <b>{todoOnTime}</b></div>
                   <div className="legend-item"><span className="dot dot-red"></span> Overdue <b>{td.overdue}</b></div>

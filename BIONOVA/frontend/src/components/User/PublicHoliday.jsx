@@ -71,7 +71,7 @@ const PublicHoliday = ({ userRole, onLogout }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [editId, setEditId] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   const [alertConfig, setAlertConfig] = useState({
     isOpen: false,
@@ -105,7 +105,6 @@ const PublicHoliday = ({ userRole, onLogout }) => {
 
   const fetchData = async () => {
     try {
-      setIsLoading(true);
       const [holidaysData, employeesData, companiesData, plantsData, profileRes] = await Promise.all([
         apiGet("/api/calendar"),
         apiGet("/api/employees").catch(() => []),

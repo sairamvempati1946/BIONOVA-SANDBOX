@@ -38,7 +38,7 @@ public class AdminDashboardService {
     public AdminDashboardResponse getDashboardData() {
         // Single stored procedure call — replaces all previous repository calls
         Object result = entityManager
-                .createNativeQuery("SELECT get_admin_dashboard()")
+                .createNativeQuery("SELECT get_admin_dashboard()::text")
                 .getSingleResult();
 
         try {

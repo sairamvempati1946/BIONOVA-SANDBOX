@@ -29,7 +29,7 @@ public class ProjectDashboardService {
     public ProjectDashboardResponse getProjectManagerMetrics() {
         // Single stored procedure call — replaces all previous repository iteration
         Object result = entityManager
-                .createNativeQuery("SELECT get_pm_dashboard()")
+                .createNativeQuery("SELECT get_pm_dashboard()::text")
                 .getSingleResult();
 
         try {

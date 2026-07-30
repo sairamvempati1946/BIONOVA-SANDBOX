@@ -53,7 +53,7 @@ public class UserDashboardController {
         }
 
         Object result = entityManager
-                .createNativeQuery("SELECT get_user_dashboard(:empId)")
+                .createNativeQuery("SELECT get_user_dashboard(:empId)::text")
                 .setParameter("empId", employee.getEmpId())
                 .getSingleResult();
 
@@ -75,7 +75,7 @@ public class UserDashboardController {
         }
 
         Object result = entityManager
-                .createNativeQuery("SELECT get_my_tasks_data(:empId)")
+                .createNativeQuery("SELECT get_my_tasks_data(:empId)::text")
                 .setParameter("empId", employee.getEmpId())
                 .getSingleResult();
 

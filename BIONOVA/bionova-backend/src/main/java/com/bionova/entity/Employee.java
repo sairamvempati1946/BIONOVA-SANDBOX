@@ -7,13 +7,7 @@ import lombok.Setter;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "employee_master", indexes = {
-        @Index(name = "idx_emp_email", columnList = "email"),
-        @Index(name = "idx_emp_coy_id", columnList = "coy_id"),
-        @Index(name = "idx_emp_plt_id", columnList = "plt_id"),
-        @Index(name = "idx_emp_dept_id", columnList = "dept_id"),
-        @Index(name = "idx_emp_desig_id", columnList = "desig_id")
-})
+@Table(name = "employee_master")
 @SecondaryTable(
     name = "employee_password_master",
     pkJoinColumns = @PrimaryKeyJoinColumn(name = "emp_id", referencedColumnName = "emp_id")
@@ -51,7 +45,7 @@ public class Employee {
     @Column(name = "mob_num", unique = true, length = 15)
     private String mobNum;
 
-    @Column(name = "bld_grp", length = 20)
+    @Column(name = "bld_grp", length = 10)
     private String bldGrp;
 
     @Column(name = "address", nullable = false, length = 255)
@@ -89,28 +83,10 @@ public class Employee {
     @Column(name = "sts")
     private Boolean status;
 
-    @Column(name = "fcm_token", length = 255)
-    private String fcmToken;
+    @Column(name = "role", length = 20)
+    private String role;
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(name = "emp_password", table = "employee_password_master", nullable = false, length = 100)
     private String password;
-
-    @Transient
-    private String designation;
-
-    @Transient
-    private String role;
-
-    @Transient
-    private String coyNm;
-
-    @Transient
-    private String pltNm;
-
-    @Transient
-    private String deptNm;
-
-    @Transient
-    private String repManNm;
 }

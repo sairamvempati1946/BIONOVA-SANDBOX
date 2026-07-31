@@ -35,7 +35,8 @@ body {
   margin-left: 260px;
   display: flex;
   flex-direction: column;
-  padding-bottom: 24px;
+  min-height: 100vh;
+  padding-bottom: 90px;
   background: #f4f7fc;
   min-width: 0;
 }
@@ -314,7 +315,7 @@ body {
   font-weight: 600;
   color: #475569;
   border-bottom: 1px solid #e2e8f0;
-  white-space: nowrap !important;
+  white-space: nowrap;
 }
 
 .cc-list-table th.sortable {
@@ -330,7 +331,7 @@ body {
   padding: 10px 12px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
-  white-space: nowrap !important;
+  white-space: nowrap;
 }
 
 .cc-list-table tbody tr:hover {
@@ -1095,22 +1096,4 @@ input:checked + .cc-slider:before { transform: translateX(16px); }
 }
 @media (max-width: 480px) {
   .cm-shell { margin-left: 70px; } /* matches sidebar.css */
-}
-
-.spinning {
-  animation: spin 1.2s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.cc-overview-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.cc-overview-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
 }

@@ -29,21 +29,6 @@ class BionovaBackendApplicationTests {
 	@Autowired
 	private ObjectMapper objectMapper;
 
-	@Autowired
-	private com.bionova.repository.ProcessConfigRepository processConfigRepository;
-	@Test
-	void testPrintDbInfo() throws Exception {
-		System.out.println("--- CURRENT STATE OF reviewer_master ---");
-		jdbcTemplate.query("SELECT * FROM reviewer_master", rs -> {
-			System.out.println("r_id: " + rs.getInt("r_id") + " | r_nm: " + rs.getString("r_nm"));
-		});
-
-		System.out.println("--- CURRENT STATE OF process_config ---");
-		jdbcTemplate.query("SELECT pc_id, task_id, is_live, ordr_id, emp_id, r_id FROM process_config", rs -> {
-			System.out.println("pc_id: " + rs.getInt("pc_id") + " | task_id: " + rs.getLong("task_id") + " | is_live: " + rs.getBoolean("is_live") + " | ordr_id: " + rs.getInt("ordr_id") + " | emp_id: " + rs.getObject("emp_id") + " | r_id: " + rs.getObject("r_id"));
-		});
-	}
-
 	@Test
 	void testProjectMilestoneTaskFlow() throws Exception {
 		// Insert master records if not present

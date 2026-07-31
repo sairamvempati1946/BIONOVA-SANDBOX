@@ -22,13 +22,6 @@ public class PlantController {
     public List<PlantMaster> getPlants() {
         return plantRepository.findAll();
     }
-    
-    @GetMapping("/plants/{id}")
-    public ResponseEntity<PlantMaster> getPlantById(@PathVariable Long id) {
-        return plantRepository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
 
     @GetMapping("/plants/by-company/{coyId}")
     public List<PlantMaster> getPlantsByCompany(@PathVariable Long coyId) {
@@ -95,7 +88,6 @@ public class PlantController {
         plant.setWrkDaysPerWk(details.getWrkDaysPerWk());
         plant.setLat(details.getLat());
         plant.setLongt(details.getLongt());
-        plant.setLogo(details.getLogo());
         plant.setAddlRem(details.getAddlRem());
         plant.setSts(details.getSts());
         PlantMaster saved = plantRepository.save(plant);

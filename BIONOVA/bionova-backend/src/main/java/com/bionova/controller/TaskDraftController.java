@@ -3,7 +3,6 @@ package com.bionova.controller;
 import com.bionova.entity.MilestoneDraft;
 import com.bionova.entity.ProjectDraft;
 import com.bionova.entity.TaskDraft;
-import com.bionova.entity.TaskStatusMaster;
 import com.bionova.repository.MilestoneDraftRepository;
 import com.bionova.repository.ProjectDraftRepository;
 import com.bionova.repository.TaskDraftRepository;
@@ -47,31 +46,25 @@ public class TaskDraftController {
 
     @PostMapping
     public ResponseEntity<?> create(@RequestBody TaskDraft task) {
-        MilestoneDraft milestone = milestoneDraftRepository.findById(task.getDrftMId())
-                .orElseThrow(() -> new RuntimeException("Milestone not found with ID: " + task.getDrftMId()));
-
         if (task.getTaskCd() != null && !task.getTaskCd().trim().isEmpty()) {
-            if (taskDraftRepository.existsByTaskCdAndProject(task.getTaskCd(), milestone.getDrftPrjId())) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Task code already exists in this project."));
+            if (taskDraftRepository.existsByTaskCd(task.getTaskCd())) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Task code already exists."));
             }
         }
 
-        task.setTaskSts(TaskStatusMaster.DRAFT);
+        MilestoneDraft milestone = milestoneDraftRepository.findById(task.getDrftMId())
+                .orElseThrow(() -> new RuntimeException("Milestone not found with ID: " + task.getDrftMId()));
+
+        task.setTaskSts("DRAFT");
         if (task.getSts() == null) {
             task.setSts(true);
         }
 
-        // Auto-compute dates or days (inclusive: noOfDays counts start day)
-        if (task.getTentEndDt() != null) {
-            if (task.getTentStDt() != null && task.getNoOfDays() == null) {
-                long days = java.time.temporal.ChronoUnit.DAYS.between(task.getTentStDt(), task.getTentEndDt()) + 1;
-                task.setNoOfDays((int) days);
-            }
-        } else if (task.getTentStDt() != null && task.getNoOfDays() != null) {
-            // end = start + (duration - 1)  → 4 days from Jul4 ends Jul7
-            task.setTentEndDt(task.getTentStDt().plusDays(task.getNoOfDays() - 1));
+        // Auto-compute dates or days
+        if (task.getTentStDt() != null && task.getNoOfDays() != null) {
+            task.setTentEndDt(task.getTentStDt().plusDays(task.getNoOfDays()));
         } else if (task.getTentStDt() != null && task.getTentEndDt() != null) {
-            long days = java.time.temporal.ChronoUnit.DAYS.between(task.getTentStDt(), task.getTentEndDt()) + 1;
+            long days = java.time.temporal.ChronoUnit.DAYS.between(task.getTentStDt(), task.getTentEndDt());
             task.setNoOfDays((int) days);
         }
 
@@ -111,11 +104,8 @@ public class TaskDraftController {
                 .orElseThrow(() -> new RuntimeException("Task not found: " + id));
 
         if (details.getTaskCd() != null && !details.getTaskCd().trim().isEmpty()) {
-            Long mId = details.getDrftMId() != null ? details.getDrftMId() : task.getDrftMId();
-            MilestoneDraft milestone = milestoneDraftRepository.findById(mId)
-                    .orElseThrow(() -> new RuntimeException("Milestone not found: " + mId));
-            if (taskDraftRepository.existsByTaskCdAndProjectAndDrftTaskIdNot(details.getTaskCd(), milestone.getDrftPrjId(), id)) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Task code already exists in this project."));
+            if (taskDraftRepository.existsByTaskCdAndDrftTaskIdNot(details.getTaskCd(), id)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Task code already exists."));
             }
             task.setTaskCd(details.getTaskCd());
         }
@@ -130,19 +120,15 @@ public class TaskDraftController {
         task.setTaskDepTyp(details.getTaskDepTyp());
         task.setDepTaskId(details.getDepTaskId());
         
-        // Auto-compute dates or days based on changes (inclusive)
-        if (details.getTentEndDt() != null) {
+        // Auto-compute dates or days based on changes
+        if (details.getTentStDt() != null && details.getNoOfDays() != null) {
             task.setTentStDt(details.getTentStDt());
             task.setNoOfDays(details.getNoOfDays());
-            task.setTentEndDt(details.getTentEndDt());
-        } else if (details.getTentStDt() != null && details.getNoOfDays() != null) {
-            task.setTentStDt(details.getTentStDt());
-            task.setNoOfDays(details.getNoOfDays());
-            task.setTentEndDt(details.getTentStDt().plusDays(details.getNoOfDays() - 1));
+            task.setTentEndDt(details.getTentStDt().plusDays(details.getNoOfDays()));
         } else if (details.getTentStDt() != null && details.getTentEndDt() != null) {
             task.setTentStDt(details.getTentStDt());
             task.setTentEndDt(details.getTentEndDt());
-            long days = java.time.temporal.ChronoUnit.DAYS.between(details.getTentStDt(), details.getTentEndDt()) + 1;
+            long days = java.time.temporal.ChronoUnit.DAYS.between(details.getTentStDt(), details.getTentEndDt());
             task.setNoOfDays((int) days);
         } else {
             task.setNoOfDays(details.getNoOfDays());
@@ -151,6 +137,7 @@ public class TaskDraftController {
         }
 
         task.setChkFlg(details.getChkFlg());
+        task.setChkId(details.getChkId());
         task.setFilePath(details.getFilePath());
         task.setNoteTxt(details.getNoteTxt());
         task.setPrcsFlg(details.getPrcsFlg());

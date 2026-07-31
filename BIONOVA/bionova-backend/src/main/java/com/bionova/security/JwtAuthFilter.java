@@ -39,7 +39,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                     String email = jwtUtil.extractEmail(token);
                     String role  = (String) jwtUtil.extractClaims(token).get("role");
-                    Long empId   = jwtUtil.extractEmpId(token);
 
                     String authority = "ROLE_" + (role != null ? role.toUpperCase() : "USER");
 
@@ -55,11 +54,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     );
 
                     SecurityContextHolder.getContext().setAuthentication(authentication);
-
-                    // Store empId as request attribute for RBAC guard filter
-                    if (empId != null) {
-                        request.setAttribute("empId", empId);
-                    }
                 } else {
                     System.out.println("TOKEN INVALID");
                 }

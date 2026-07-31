@@ -118,11 +118,14 @@ public class RbacGuardFilter extends OncePerRequestFilter {
             "storage",                  // /api/storage
             "reviewers",                // /api/reviewers
             "states",                   // /api/states
-            "assignments",              // /api/assignments (Renamed from individual-tasks)
-            "profile",                  // /api/profile (Every user must access their profile)
-            "employees/fcm-token",       // /api/employees/fcm-token (Every user must register token)
-            "employees/change-password", // /api/employees/change-password (Every user must be able to change password)
-            "rbac/employees"            // /api/rbac/employees/** (Required for loading sidebar permissions for all logged-in employees)
+            "assignments",              // /api/assignments
+            "profile",                  // /api/profile
+            "user-dashboard",           // /api/user-dashboard
+            "dashboard",                // /api/dashboard
+            "admin/dashboard",          // /api/admin/dashboard/**
+            "employees/fcm-token",       // /api/employees/fcm-token
+            "employees/change-password", // /api/employees/change-password
+            "rbac/employees"            // /api/rbac/employees/**
     ));
 
     public RbacGuardFilter(RoleBasedEmployeeMappingRepository employeeMappingRepository,
@@ -210,9 +213,13 @@ public class RbacGuardFilter extends OncePerRequestFilter {
         }
 
         // 6. Check viewFlg across ALL role mappings for this employee (OR logic)
+        boolean hasAnyRbacRules = false;
         boolean allowed = false;
         for (RoleBasedEmployeeMapping mapping : mappings) {
             List<RoleBasedAccessControl> rbacList = rbacRepository.findByRoleId(mapping.getRoleId());
+            if (!rbacList.isEmpty()) {
+                hasAnyRbacRules = true;
+            }
             for (RoleBasedAccessControl rbac : rbacList) {
                 if (allowedScreenIds.contains(rbac.getScreenId()) && Boolean.TRUE.equals(rbac.getViewFlg())) {
                     allowed = true;
@@ -220,6 +227,12 @@ public class RbacGuardFilter extends OncePerRequestFilter {
                 }
             }
             if (allowed) break;
+        }
+
+        if (!hasAnyRbacRules) {
+            // Role has no RBAC rules defined in DB yet → allow pass-through
+            filterChain.doFilter(request, response);
+            return;
         }
 
         if (!allowed) {
@@ -244,8 +257,15 @@ public class RbacGuardFilter extends OncePerRequestFilter {
     private List<String> resolveScreenCodes(String requestUri) {
         if (requestUri == null) return null;
 
-        // Normalize: strip leading /api/
         String path = requestUri;
+
+        // Strip query string if present
+        int queryIdx = path.indexOf('?');
+        if (queryIdx != -1) {
+            path = path.substring(0, queryIdx);
+        }
+
+        // Normalize: strip leading /api/
         if (path.startsWith("/api/")) {
             path = path.substring(5);
         } else if (path.startsWith("/api")) {

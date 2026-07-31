@@ -191,15 +191,8 @@ public class RbacGuardFilter extends OncePerRequestFilter {
         // 4. Check if the employee has RBAC configured
         List<RoleBasedEmployeeMapping> mappings = employeeMappingRepository.findByEmpId(empId);
         if (mappings.isEmpty()) {
-            // No RBAC configured → Access Denied
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            response.setContentType("application/json");
-            response.setCharacterEncoding("UTF-8");
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("status", 403);
-            body.put("error", "Access Denied");
-            body.put("message", "You do not have any roles assigned. Please contact the administrator.");
-            response.getWriter().write(objectMapper.writeValueAsString(body));
+            // No RBAC configured for this employee → allow pass-through (unrestricted default access)
+            filterChain.doFilter(request, response);
             return;
         }
 

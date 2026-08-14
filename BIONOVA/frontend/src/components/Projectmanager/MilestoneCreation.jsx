@@ -17,7 +17,7 @@ import "../../styles/milestoneCreation.css";
 // API SERVICE – Draft & Live APIs
 // ============================================================
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL) + "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com') + "/api";
 
 const getAuthToken = () => sessionStorage.getItem("authToken") || "";
 const authHeaders = () => ({

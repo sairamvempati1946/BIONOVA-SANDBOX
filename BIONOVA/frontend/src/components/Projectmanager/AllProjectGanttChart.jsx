@@ -5,7 +5,7 @@ import Sidebar from "../Sidebar.jsx";
 import Header from "../Header.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL) + "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com') + "/api";
 const getAuthToken = () => sessionStorage.getItem("authToken") || "";
 const authHeaders = () => ({
   "Content-Type": "application/json",

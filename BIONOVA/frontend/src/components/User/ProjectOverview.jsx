@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Flag, FileText, CheckCircle, Clock, AlertCircle, AlertTriangle, Plus, Eye } from 'lucide-react';
 import '../../styles/project-overview.css';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL) + "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com') + "/api";
 const getAuthHeaders = () => ({
   "Content-Type": "application/json",
   "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`

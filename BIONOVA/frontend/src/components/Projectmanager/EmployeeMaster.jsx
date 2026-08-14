@@ -40,7 +40,7 @@ import "../../styles/EmployeeMaster.css";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
 
 const getAuthHeaders = () => ({
   "Content-Type": "application/json",

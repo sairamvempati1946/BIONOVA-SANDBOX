@@ -37,7 +37,7 @@ public class PasswordResetService {
     @Value("${app.mobile-base-url:bionova://reset-password}")
     private String mobileBaseUrl;
 
-    @Value("${app.mobile-app-link-url:https://bionova-rjii.onrender.com/reset-password}")
+    @Value("${app.mobile-app-link-url:https://bionova-sandbox.onrender.com/reset-password}")
     private String mobileAppLinkUrl;
 
     @Value("${spring.mail.username}")

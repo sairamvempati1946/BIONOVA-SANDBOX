@@ -8,7 +8,7 @@
  *   const result    = await apiPost('/api/companies', { name: 'XYZ' });
  */
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
 
 function getAuthHeaders() {
   const token = sessionStorage.getItem('authToken');

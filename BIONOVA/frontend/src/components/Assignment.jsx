@@ -12,7 +12,7 @@ import AlertModal from './AlertModal';
 import { getScreenPermission } from '../utils/permissions';
 import GoLiveCalendar from './Projectmanager/GoLiveCalendar';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
 
 const getAuthHeaders = () => ({
   "Content-Type": "application/json",

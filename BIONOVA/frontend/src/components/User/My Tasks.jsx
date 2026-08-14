@@ -47,7 +47,7 @@ import {
 import "../../styles/MyTasks.css";
 import { apiGet, apiPut, apiPatch, apiPost, apiPostMultipart, apiDelete } from "../../utils/api";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
 
 // ============================================
 // CONSTANTS - COLORS & STATUS

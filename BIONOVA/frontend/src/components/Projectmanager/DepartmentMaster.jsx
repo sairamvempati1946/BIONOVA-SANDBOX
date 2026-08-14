@@ -29,7 +29,7 @@ import AlertModal from "../AlertModal.jsx";
 import { getScreenPermission } from "../../utils/permissions";
 import "../../styles/DepartmentMaster.css";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
 
 const getAuthHeaders = () => ({
   "Content-Type": "application/json",

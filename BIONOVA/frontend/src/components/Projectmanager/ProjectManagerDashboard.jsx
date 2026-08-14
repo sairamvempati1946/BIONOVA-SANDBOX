@@ -94,7 +94,7 @@ const DonutChart = ({ data, total, centerValue, centerLabel, size = 140 }) => {
   );
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL) + "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com') + "/api";
 
 const authHeaders = () => {
   const token = sessionStorage.getItem("authToken");

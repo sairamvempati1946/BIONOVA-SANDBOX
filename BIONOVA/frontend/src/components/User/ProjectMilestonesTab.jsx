@@ -4,7 +4,7 @@ import '../../styles/project-milestones-tab.css';
 import ProjectGanttChart from './ProjectGanttChart.jsx';
 import ExtendExternalLinkModal from '../ExtendExternalLinkModal.jsx';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL) + "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com') + "/api";
 const getAuthToken = () => sessionStorage.getItem("authToken") || "";
 const authHeaders = () => ({
   "Content-Type": "application/json",

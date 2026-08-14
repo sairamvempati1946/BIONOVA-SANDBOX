@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import '../../styles/GoLiveCalendar.css';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
 const getAuthHeaders = () => {
   const token = sessionStorage.getItem("authToken") || localStorage.getItem("authToken");
   return {

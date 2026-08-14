@@ -18,7 +18,7 @@ import AlertModal from '../AlertModal';
 // ── Styles ──
 import '../../styles/AssignAcess.css';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
 
 const getAuthHeaders = () => {
   const token = sessionStorage.getItem("authToken") || localStorage.getItem("authToken");

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Menu, Search, Bell, User, ExternalLink, X, FolderOpen, CheckSquare, Flag, Trash2, CheckCheck } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
+
 const STATUS_COLORS = {
   'Closed':      { bar: '#10b981', bg: '#d1fae5' },
   'Completed':   { bar: '#10b981', bg: '#d1fae5' },
@@ -83,7 +85,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
     const fetchProfile = async () => {
       if (!email) return;
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/profile`, {
+        const res = await fetch(`${apiBaseUrl}/api/profile`, {
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`
@@ -116,7 +118,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
               let logoUrl = null;
               if (me.pltId) {
                 try {
-                  const pltRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/plants/${me.pltId}`, {
+                  const pltRes = await fetch(`${apiBaseUrl}/api/plants/${me.pltId}`, {
                     headers: {
                       "Content-Type": "application/json",
                       "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`
@@ -135,7 +137,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
 
               if (!logoUrl && me.coyId) {
                 try {
-                  const coyRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/companies/${me.coyId}`, {
+                  const coyRes = await fetch(`${apiBaseUrl}/api/companies/${me.coyId}`, {
                     headers: {
                       "Content-Type": "application/json",
                       "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`
@@ -205,7 +207,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/notifications`, {
+      const res = await fetch(`${apiBaseUrl}/api/notifications`, {
         headers: authHeaders()
       });
       if (res.ok) {
@@ -219,7 +221,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
 
   const markAllAsRead = async () => {
     try {
-      await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/notifications/read-all`, {
+      await fetch(`${apiBaseUrl}/api/notifications/read-all`, {
         method: "PATCH",
         headers: authHeaders()
       });
@@ -231,7 +233,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
 
   const clearAllNotifications = async () => {
     try {
-      await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/notifications/clear-all`, {
+      await fetch(`${apiBaseUrl}/api/notifications/clear-all`, {
         method: "DELETE",
         headers: authHeaders()
       }).catch(() => {});
@@ -244,7 +246,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
 
   const markOneAsRead = async (id) => {
     try {
-      await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/notifications/${id}/read`, {
+      await fetch(`${apiBaseUrl}/api/notifications/${id}/read`, {
         method: "PATCH",
         headers: authHeaders()
       });

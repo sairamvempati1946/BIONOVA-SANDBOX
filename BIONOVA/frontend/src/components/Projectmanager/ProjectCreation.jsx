@@ -28,7 +28,7 @@ import { calculateDynamicPriority } from "../../utils/priority";
 import GoLiveCalendar from "./GoLiveCalendar.jsx";
 import "../../styles/projectCreation.css";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
 const getAuthHeaders = () => {
   const token = sessionStorage.getItem("authToken") || localStorage.getItem("authToken");
   const headers = {

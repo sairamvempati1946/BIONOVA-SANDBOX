@@ -16,7 +16,7 @@ import {
   Plus
 } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://bionova-sandbox.onrender.com";
 const getAuthToken = () => sessionStorage.getItem("authToken") || localStorage.getItem("token") || "";
 
 const ExtendExternalLinkModal = ({ isOpen, onClose, taskId, taskName, onSuccess }) => {

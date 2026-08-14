@@ -8,7 +8,7 @@
  *   const result    = await apiPost('/api/companies', { name: 'XYZ' });
  */
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 function getAuthHeaders() {
   const token = sessionStorage.getItem('authToken');
@@ -30,9 +30,15 @@ async function handleResponse(response) {
     const text = await response.text();
     throw new Error(`Request failed (${response.status}): ${text}`);
   }
-  // Return null for 204 No Content
+  // Return null for 204 No Content or empty body
   if (response.status === 204) return null;
-  return response.json();
+  const text = await response.text();
+  if (!text || !text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return text;
+  }
 }
 
 export async function apiGet(path) {
@@ -52,6 +58,21 @@ export async function apiPost(path, body) {
   return handleResponse(response);
 }
 
+export async function apiPostMultipart(path, formData) {
+  const token = sessionStorage.getItem('authToken');
+  const headers = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
 export async function apiPut(path, body) {
   const response = await fetch(`${BASE_URL}${path}`, {
     method: 'PUT',
@@ -67,4 +88,22 @@ export async function apiDelete(path) {
     headers: getAuthHeaders(),
   });
   return handleResponse(response);
+}
+
+export async function apiPatch(path, body) {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(body),
+  });
+  return handleResponse(response);
+}
+
+export async function safeFetch(path, fallback = null) {
+  try {
+    return await apiGet(path);
+  } catch (err) {
+    console.warn(`safeFetch failed for ${path}:`, err);
+    return fallback;
+  }
 }

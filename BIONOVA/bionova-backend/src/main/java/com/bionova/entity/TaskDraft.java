@@ -8,7 +8,8 @@ import java.time.LocalDate;
 
 @Entity
 @Table(name = "task_draft_master")
-@org.hibernate.annotations.Check(constraints = "task_typ IN ('INTERNAL','EXTERNAL') AND task_dep_typ IN ('INDEPENDENT','SEQUENTIAL','PARALLEL') AND task_sts IN ('DRAFT')")
+@org.hibernate.annotations.Check(constraints = "task_typ IN ('INTERNAL','EXTERNAL') AND task_dep_typ IN ('INDEPENDENT','SEQUENTIAL','PARALLEL')")
+@EntityListeners(com.bionova.config.AuditListener.class)
 @Getter
 @Setter
 public class TaskDraft {
@@ -21,7 +22,7 @@ public class TaskDraft {
     @Column(name = "drft_m_id", nullable = false)
     private Long drftMId;
 
-    @Column(name = "task_cd", unique = true, length = 10)
+    @Column(name = "task_cd", length = 10)
     private String taskCd;
 
     @Column(name = "task_nm", nullable = false, length = 100)
@@ -54,9 +55,6 @@ public class TaskDraft {
     @Column(name = "chk_flg")
     private Boolean chkFlg = false;
 
-    @Column(name = "chk_id")
-    private Integer chkId;
-
     @Column(name = "file_path", length = 255)
     private String filePath;
 
@@ -75,12 +73,28 @@ public class TaskDraft {
     @Column(name = "prcs_yes_actn", length = 200)
     private String prcsYesActn;
 
-    @Column(name = "task_sts", length = 20)
-    private String taskSts = "DRAFT";
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "task_sts", referencedColumnName = "status_id")
+    private TaskStatusMaster taskSts = TaskStatusMaster.DRAFT;
+
+    @Column(name = "sub_status", length = 50)
+    private String subStatus;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "priority", referencedColumnName = "priority_id")
+    private TaskPriorityMaster priority;
 
     @Column(name = "addl_rem", length = 255)
     private String addlRem;
 
     @Column(name = "sts")
     private Boolean sts = true;
+
+    public TaskPriorityMaster getPriority() {
+        TaskPriorityMaster baseP = (this.priority != null) ? this.priority : TaskPriorityMaster.LOW;
+        if (taskSts != null && "CLOSED".equalsIgnoreCase(taskSts.getStatusNm())) {
+            return TaskPriorityMaster.calculatePriority(tentStDt, tentEndDt, noOfDays, taskSts, null, baseP);
+        }
+        return TaskPriorityMaster.calculatePriority(tentStDt, tentEndDt, noOfDays, taskSts, null, baseP);
+    }
 }

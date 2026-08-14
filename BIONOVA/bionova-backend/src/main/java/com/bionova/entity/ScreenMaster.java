@@ -15,12 +15,12 @@ public class ScreenMaster {
     @Column(name = "screen_id")
     private Integer screenId;
 
-    @Column(name = "screen_cd", nullable = false, unique = true, length = 50)
-    private String screenCode;
-
     @Column(name = "screen_nm", nullable = false, length = 100)
     private String screenNm;
 
-    @Column(name = "module_nm", length = 100)
-    private String moduleNm;
+    @Column(name = "group_nm", nullable = false, length = 100)
+    private String groupNm;
+
+    @Column(name = "screen_code", unique = true, length = 50)
+    private String screenCode;
 }

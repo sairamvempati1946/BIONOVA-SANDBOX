@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface RoleBasedEmployeeMappingRepository extends JpaRepository<RoleBasedEmployeeMapping, Long> {
+public interface RoleBasedEmployeeMappingRepository extends JpaRepository<RoleBasedEmployeeMapping, Integer> {
     List<RoleBasedEmployeeMapping> findByEmpId(Long empId);
+    List<RoleBasedEmployeeMapping> findByRoleId(Integer roleId);
+    void deleteByEmpId(Long empId);
+    void deleteByEmpIdAndRoleId(Long empId, Integer roleId);
 }

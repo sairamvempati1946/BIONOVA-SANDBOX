@@ -13,11 +13,11 @@ public class RoleBasedEmployeeMapping {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "map_id")
-    private Long mapId;
-
-    @Column(name = "emp_id", nullable = false)
-    private Long empId;
+    private Integer mapId;
 
     @Column(name = "role_id", nullable = false)
     private Integer roleId;
+
+    @Column(name = "emp_id", nullable = false)
+    private Long empId;
 }

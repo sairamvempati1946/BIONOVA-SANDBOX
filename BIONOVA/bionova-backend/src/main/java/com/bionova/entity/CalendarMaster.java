@@ -24,21 +24,18 @@ public class CalendarMaster {
     @Column(name = "holiday_nm", nullable = false, length = 100)
     private String holidayNm;
 
-    @Column(name = "cal_yr", nullable = false)
-    private Integer calYr;
-
-    @Column(name = "coy_id")
-    private Integer coyId;
-
-    @Column(name = "plt_id")
-    private Integer pltId;
-
+    // Scope fields removed as requested
+    /**
+     * MANDATORY = Public holiday (applies to all, regardless of cal_type)
+     * OPTIONAL  = Optional holiday (company/plant/external specific)
+     */
     @Column(name = "hol_typ", length = 10)
     private String holTyp;
 
-    @Column(name = "addl_rem", length = 255)
-    private String addlRem;
+    /** FK → employee_master.emp_id — who added this holiday record */
+    @Column(name = "added_by")
+    private Integer addedBy;
 
-    @Column(name = "sts")
-    private Boolean sts = true;
+    @Column(name = "is_regular")
+    private Boolean isRegular;
 }

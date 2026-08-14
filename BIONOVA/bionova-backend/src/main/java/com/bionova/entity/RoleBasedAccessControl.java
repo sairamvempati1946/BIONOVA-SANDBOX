@@ -6,30 +6,34 @@ import lombok.Setter;
 
 @Entity
 @Table(name = "role_based_access_control")
+@IdClass(RoleBasedAccessControlId.class)
 @Getter
 @Setter
 public class RoleBasedAccessControl {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "rbac_id")
-    private Long rbacId;
-
-    @Column(name = "role_id", nullable = false)
+    @Column(name = "role_id")
     private Integer roleId;
 
-    @Column(name = "screen_id", nullable = false)
+    @Column(name = "role_nm", nullable = false, length = 100)
+    private String roleNm;
+
+    @Id
+    @Column(name = "screen_id")
     private Integer screenId;
 
     @Column(name = "view_flg")
-    private Boolean viewFlg = true;
-
-    @Column(name = "crt_flg")
-    private Boolean crtFlg = true;
+    private Boolean viewFlg = false;
 
     @Column(name = "edit_flg")
-    private Boolean editFlg = true;
+    private Boolean editFlg = false;
 
-    @Column(name = "del_flg")
-    private Boolean delFlg = true;
+    @Column(name = "add_flg")
+    private Boolean addFlg = false;
+
+    @Column(name = "delete_flg")
+    private Boolean deleteFlg = false;
+
+    @Column(name = "created_by", length = 100)
+    private String createdBy;
 }

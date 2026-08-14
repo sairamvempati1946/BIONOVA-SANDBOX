@@ -12,8 +12,7 @@ import java.time.LocalDate;
         @Index(name = "idx_emp_coy_id", columnList = "coy_id"),
         @Index(name = "idx_emp_plt_id", columnList = "plt_id"),
         @Index(name = "idx_emp_dept_id", columnList = "dept_id"),
-        @Index(name = "idx_emp_desig_id", columnList = "desig_id"),
-        @Index(name = "idx_emp_prnt_coy_id", columnList = "prnt_coy_id")
+        @Index(name = "idx_emp_desig_id", columnList = "desig_id")
 })
 @SecondaryTable(
     name = "employee_password_master",

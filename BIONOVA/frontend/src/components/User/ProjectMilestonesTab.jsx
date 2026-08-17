@@ -4,7 +4,7 @@ import '../../styles/project-milestones-tab.css';
 import ProjectGanttChart from './ProjectGanttChart.jsx';
 import ExtendExternalLinkModal from '../ExtendExternalLinkModal.jsx';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com') + "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL) + "/api";
 const getAuthToken = () => sessionStorage.getItem("authToken") || "";
 const authHeaders = () => ({
   "Content-Type": "application/json",
@@ -135,6 +135,7 @@ const ProjectMilestonesTab = ({ project, userRole }) => {
       case 'COMPLETED': return 'st-completed';
       case 'IN PROGRESS':
       case 'WIP': return 'st-in-progress';
+      case 'LOCKED': return 'st-locked';
       case 'NOT STARTED':
       case 'OPEN': return 'st-not-started';
       case 'HOLD':
@@ -438,6 +439,22 @@ const ProjectMilestonesTab = ({ project, userRole }) => {
                     }).length;
                     if (closedMTasks === mTasks.length) {
                       st = 'CLOSED';
+                    }
+                  }
+
+                  // Check predecessor milestone completion for sequential dependency
+                  if (idx > 0) {
+                    const prevM = milestones[idx - 1];
+                    const prevMId = getMilestoneId(prevM);
+                    const prevMTasks = getTasksForMilestone(prevMId);
+                    const prevClosedCount = prevMTasks.filter(t => {
+                      const s = getTaskStatusStr(t);
+                      return s === 'COMPLETED' || s === 'CLOSED' || s === 'DONE' || s === 'COMPLETE';
+                    }).length;
+                    const prevSt = (prevM.mlstnSts || prevM.mlstn_sts || prevM.mlstmSts || prevM.mlstm_sts || '').toUpperCase();
+                    const isPrevComplete = (prevMTasks.length > 0 && prevClosedCount === prevMTasks.length) || (prevSt === 'CLOSED' || prevSt === 'COMPLETED');
+                    if (!isPrevComplete) {
+                      st = 'LOCKED';
                     }
                   }
                   const mDur = m.mlstnDays || m.mlstn_days || m.mlstm_days || m.mlstmDays || 0;

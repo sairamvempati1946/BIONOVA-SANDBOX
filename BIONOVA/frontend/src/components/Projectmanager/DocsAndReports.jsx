@@ -37,7 +37,7 @@ import plantImage from "../../assets/cbg_plant_construction.png";
 import Header from "../Header";
 import AlertModal from "../AlertModal";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com') + "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL) + "/api";
 
 const authHeaders = () => ({
   Authorization: `Bearer ${sessionStorage.getItem("authToken") || ""}`,

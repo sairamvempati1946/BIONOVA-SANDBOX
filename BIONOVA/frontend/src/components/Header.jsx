@@ -2,8 +2,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Menu, Search, Bell, User, ExternalLink, X, FolderOpen, CheckSquare, Flag, Trash2, CheckCheck } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
-
 const STATUS_COLORS = {
   'Closed':      { bar: '#10b981', bg: '#d1fae5' },
   'Completed':   { bar: '#10b981', bg: '#d1fae5' },
@@ -85,7 +83,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
     const fetchProfile = async () => {
       if (!email) return;
       try {
-        const res = await fetch(`${apiBaseUrl}/api/profile`, {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/profile`, {
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`
@@ -118,7 +116,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
               let logoUrl = null;
               if (me.pltId) {
                 try {
-                  const pltRes = await fetch(`${apiBaseUrl}/api/plants/${me.pltId}`, {
+                  const pltRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/plants/${me.pltId}`, {
                     headers: {
                       "Content-Type": "application/json",
                       "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`
@@ -137,7 +135,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
 
               if (!logoUrl && me.coyId) {
                 try {
-                  const coyRes = await fetch(`${apiBaseUrl}/api/companies/${me.coyId}`, {
+                  const coyRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/companies/${me.coyId}`, {
                     headers: {
                       "Content-Type": "application/json",
                       "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`
@@ -207,12 +205,14 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch(`${apiBaseUrl}/api/notifications`, {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/notifications`, {
         headers: authHeaders()
       });
       if (res.ok) {
         const data = await res.json();
-        setNotifications(data);
+        // Filter out notifications that were cleared locally
+        const hiddenIds = JSON.parse(localStorage.getItem("hiddenNotifIds") || "[]");
+        setNotifications(data.filter(n => !hiddenIds.includes(n.id)));
       }
     } catch (err) {
       console.error("Failed to fetch notifications", err);
@@ -221,7 +221,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
 
   const markAllAsRead = async () => {
     try {
-      await fetch(`${apiBaseUrl}/api/notifications/read-all`, {
+      await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/notifications/read-all`, {
         method: "PATCH",
         headers: authHeaders()
       });
@@ -232,21 +232,34 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
   };
 
   const clearAllNotifications = async () => {
+    const readNotifs = notifications.filter(n => n.isRead);
+    if (readNotifs.length === 0) return;
+
     try {
-      await fetch(`${apiBaseUrl}/api/notifications/clear-all`, {
-        method: "DELETE",
-        headers: authHeaders()
-      }).catch(() => {});
-      setNotifications([]);
+      // 1. Store the cleared IDs in localStorage so they remain hidden on re-login
+      const hiddenIds = JSON.parse(localStorage.getItem("hiddenNotifIds") || "[]");
+      const newHiddenIds = [...new Set([...hiddenIds, ...readNotifs.map(n => n.id)])];
+      localStorage.setItem("hiddenNotifIds", JSON.stringify(newHiddenIds));
+
+      // 2. Attempt to delete each read notification from the backend
+      await Promise.all(
+        readNotifs.map(notif => 
+          fetch(`${import.meta.env.VITE_API_BASE_URL}/api/notifications/${notif.id}`, {
+            method: "DELETE",
+            headers: authHeaders()
+          }).catch(() => {})
+        )
+      );
+      // Remove read notifications from the UI state
+      setNotifications(prev => prev.filter(n => !n.isRead));
     } catch (err) {
-      console.error("Failed to clear notifications", err);
-      setNotifications([]);
+      console.error("Failed to clear read notifications", err);
     }
   };
 
   const markOneAsRead = async (id) => {
     try {
-      await fetch(`${apiBaseUrl}/api/notifications/${id}/read`, {
+      await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/notifications/${id}/read`, {
         method: "PATCH",
         headers: authHeaders()
       });
@@ -557,7 +570,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
                         </span>
                       )}
                     </div>
-                    {notifications.length > 0 && (
+                    {notifications.filter(n => n.isRead).length > 0 && (
                       <button
                         onClick={(e) => { e.stopPropagation(); clearAllNotifications(); }}
                         style={{
@@ -573,9 +586,9 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
                           fontWeight: "600",
                           cursor: "pointer"
                         }}
-                        title="Clear all notifications"
+                        title="Clear read notifications"
                       >
-                        <Trash2 size={13} /> Clear
+                        <Trash2 size={13} /> Clear Seen
                       </button>
                     )}
                   </div>

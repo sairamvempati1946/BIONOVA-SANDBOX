@@ -10,7 +10,7 @@ import Header from '../Header.jsx';
 import '../../styles/projectList.css';
 import { calculateDynamicPriority } from '../../utils/priority';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 const getAuthHeaders = () => ({
   "Content-Type": "application/json",
   "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`

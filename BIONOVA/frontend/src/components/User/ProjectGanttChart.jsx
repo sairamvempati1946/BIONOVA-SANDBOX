@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ZoomOut, ZoomIn, Calendar, SlidersHorizontal, ChevronRight, ChevronLeft, ChevronDown } from 'lucide-react';
 import '../../styles/gantt-chart.css';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com') + "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL) + "/api";
 const getAuthToken = () => sessionStorage.getItem("authToken") || "";
 const authHeaders = () => ({
   "Content-Type": "application/json",

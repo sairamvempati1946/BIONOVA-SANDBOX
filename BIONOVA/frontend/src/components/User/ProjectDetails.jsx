@@ -13,7 +13,7 @@ import ProjectChangeLogs from './ProjectChangeLogs.jsx';
 import DocsAndReports from '../Projectmanager/DocsAndReports.jsx';
 import '../../styles/project-details.css';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 const getAuthHeaders = () => ({
   "Content-Type": "application/json",
   "Authorization": `Bearer ${sessionStorage.getItem("authToken") || ""}`

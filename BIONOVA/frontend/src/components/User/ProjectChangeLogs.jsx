@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import '../../styles/project-change-logs.css';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com') + "/api";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL) + "/api";
 const getAuthToken = () => sessionStorage.getItem("authToken") || "";
 const authHeaders = () => ({
   "Content-Type": "application/json",

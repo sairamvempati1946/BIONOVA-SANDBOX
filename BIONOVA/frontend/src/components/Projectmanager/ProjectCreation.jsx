@@ -28,7 +28,7 @@ import { calculateDynamicPriority } from "../../utils/priority";
 import GoLiveCalendar from "./GoLiveCalendar.jsx";
 import "../../styles/projectCreation.css";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 const getAuthHeaders = () => {
   const token = sessionStorage.getItem("authToken") || localStorage.getItem("authToken");
   const headers = {
@@ -683,6 +683,10 @@ const ProjectCreation = ({ userRole, onLogout }) => {
             if (diffTime >= 0) {
               const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
               nextForm.totalProjectDays = String(diffDays);
+            } else {
+              nextForm.endDate = "";
+              nextForm.totalProjectDays = "0";
+              triggerAlert("warning", "Invalid Date Range", "Tentative End Date cannot be earlier than Tentative Start Date.");
             }
           }
         }
@@ -700,6 +704,7 @@ const ProjectCreation = ({ userRole, onLogout }) => {
             } else {
               nextForm.endDate = "";
               nextForm.totalProjectDays = "0";
+              triggerAlert("warning", "Invalid Date Range", "Tentative End Date cannot be earlier than Tentative Start Date.");
             }
           }
         }

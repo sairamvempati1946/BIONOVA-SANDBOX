@@ -48,7 +48,7 @@ const ResetPassword = () => {
     setLoading(true);
 
     try {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
       const response = await fetch(`${apiBaseUrl}/api/auth/reset-password`, {
         method: 'POST',
         headers: {

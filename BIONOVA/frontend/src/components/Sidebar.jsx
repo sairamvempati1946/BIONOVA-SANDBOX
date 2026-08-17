@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { House, Building, Flag, Users, Calendar, Settings, Factory, MapPinned, FolderPlus, ChevronDown, ChevronRight, ChevronLeft, LogOut, ClipboardCheck, User, X, PanelLeftOpen, PanelLeftClose, FileText, Briefcase, Lock } from "lucide-react";
 import "../styles/sidebar.css";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://bionova-sandbox.onrender.com';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
 const getAuthHeaders = () => {
   const token = sessionStorage.getItem("authToken") || localStorage.getItem("authToken");

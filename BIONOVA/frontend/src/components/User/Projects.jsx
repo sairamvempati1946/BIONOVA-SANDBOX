@@ -111,7 +111,10 @@ const MyProjects = ({ userRole, onLogout }) => {
         const allSystemTasks = taskRes.data || taskRes;
         
         setEmployees(empRes || []);
-        const empId = profRes?.empId;
+        const empId = profRes?.empId || profRes?.empid || profRes?.id;
+        const userEmp = (empRes || []).find(e => String(e.empId || e.empid || e.id) === String(empId));
+        const userDeptId = profRes?.deptId || profRes?.deptid || profRes?.departmentId || userEmp?.deptId || userEmp?.deptid;
+        const userDeptName = profRes?.deptNm || profRes?.deptnm || profRes?.departmentName || (typeof profRes?.department === 'string' ? profRes?.department : (typeof profRes?.department === 'object' && profRes?.department ? profRes?.department?.deptNm : null)) || userEmp?.deptNm || userEmp?.deptnm || (deptRes || []).find(d => String(d.deptId || d.deptid) === String(userDeptId))?.deptNm || "N/A";
 
         // Filter tasks to only those assigned to the logged-in user (Executor, Reviewer, or Approver)
         const userAssignedTasks = (taskRes || []).filter(t => 
@@ -287,6 +290,7 @@ const MyProjects = ({ userRole, onLogout }) => {
             priority: dynamicPrio.priority,
             priorityMeta: dynamicPrio,
             role: profRes?.firstName ? `${profRes.firstName} ${profRes.lastName || ''}` : "Team Member",
+            userDepartment: userDeptName,
             tasksAssigned: totalTasksCount > 0 ? totalTasksCount : (dashP.tasksAssigned || 0),
             openTasks: openTasksCount,
             closedTasks: completedTasksCount,
@@ -366,12 +370,12 @@ const MyProjects = ({ userRole, onLogout }) => {
   const priorityColor = (p) => {
     switch (p?.toUpperCase()) {
       case "ATMOST CRITICAL":
-      case "ATMOST_CRITICAL": return "#7f1d1d";
-      case "CRITICAL": return "#dc2626";
-      case "HIGH": return "#ea580c";
-      case "MEDIUM": return "#f59e0b";
-      case "NORMAL": return "#3b82f6";
-      case "LOW": return "#10b981";
+      case "ATMOST_CRITICAL": return "#7F1D1D";
+      case "CRITICAL": return "#B91C1C";
+      case "HIGH": return "#EF4444";
+      case "MEDIUM": return "#F59E0B";
+      case "NORMAL": return "#3B82F6";
+      case "LOW": return "#22C55E";
       default: return "#64748b";
     }
   };

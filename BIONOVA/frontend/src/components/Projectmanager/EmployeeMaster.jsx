@@ -538,8 +538,8 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
       const emailVal = value.trim();
       if (!emailVal) {
         error = "Email is required.";
-      } else if (!emailVal.toLowerCase().endsWith("@gmail.com")) {
-        error = "Email must end with @gmail.com.";
+      } else if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(emailVal)) {
+        error = "Please enter a valid @gmail.com email address with a username.";
       }
     } else if (name === "password") {
       if (!value) {
@@ -574,16 +574,6 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
     } else if (name === "firstName" || name === "lastName") {
       if (/[^a-zA-Z\s]/.test(value)) {
         error = "Only letters and spaces are allowed.";
-      }
-    } else if (name === "dateOfBirth") {
-      if (!value) {
-        error = "Date of Birth is required.";
-      } else {
-        const today = new Date();
-        const maxDob = new Date(today.setFullYear(today.getFullYear() - 18)).toISOString().split('T')[0];
-        if (value > maxDob) {
-          error = "Employee must be at least 18 years old.";
-        }
       }
     }
     return error;
@@ -978,9 +968,9 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
       triggerAlert("error", "Validation Error", "Date of Birth is required.");
       return;
     }
-    const maxDob = new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0];
-    if (form.dateOfBirth > maxDob) {
-      triggerAlert("error", "Validation Error", "Employee must be at least 18 years old.");
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (form.dateOfBirth > todayStr) {
+      triggerAlert("error", "Validation Error", "Date of Birth cannot be in the future.");
       return;
     }
 
@@ -994,8 +984,8 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
       return;
     }
     const emailVal = form.email.trim();
-    if (!emailVal.includes("@") || !emailVal.toLowerCase().endsWith(".com")) {
-      triggerAlert("error", "Validation Error", "Please enter a valid Employee Email address (must contain @ and end with .com).");
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(emailVal)) {
+      triggerAlert("error", "Validation Error", "Please enter a valid @gmail.com Employee Email address with a username.");
       return;
     }
 
@@ -1819,7 +1809,7 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
                             name="dateOfBirth"
                             value={form.dateOfBirth}
                             onChange={handleChange}
-                            max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split("T")[0]}
+                            max={new Date().toISOString().split("T")[0]}
                             style={{
                               width: '100%',
                               padding: '8px 12px',
@@ -1831,11 +1821,6 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
                             }}
                           />
                         </div>
-                        {formErrors.dateOfBirth && (
-                          <div style={{ color: "#ef4444", fontSize: "12px", marginTop: "4px" }}>
-                            {formErrors.dateOfBirth}
-                          </div>
-                        )}
                       </div>
                       <div className="emp-form-item">
                         <label>Email <span className="emp-req-star">*</span></label>

@@ -5,6 +5,7 @@ import com.bionova.entity.Employee;
 import com.bionova.entity.MilestoneLive;
 import com.bionova.entity.ProjectLive;
 import com.bionova.entity.TaskLive;
+import com.bionova.entity.TaskPriorityMaster;
 import com.bionova.entity.TeamMember;
 import com.bionova.entity.TaskStatusMaster;
 import com.bionova.entity.ScreenMaster;
@@ -70,6 +71,9 @@ public class TaskLiveController {
 
     @Autowired
     private com.bionova.service.ExternalTaskAccessService externalTaskAccessService;
+
+    @Autowired
+    private com.bionova.repository.ExternalEmployeeRepository externalEmployeeRepository;
 
     /**
      * Determines if the employee has access to the Project module.
@@ -201,6 +205,24 @@ public class TaskLiveController {
         if (task.getTaskId() != null) {
             task.setTeamMembers(teamMemberRepository.findByTaskId(task.getTaskId()));
         }
+        if (!projectStatusCascadeService.isTaskPrerequisitesMet(task)) {
+            task.setIsSequentialLocked(true);
+            if (Boolean.TRUE.equals(task.getTaskDepFlg()) && "SEQUENTIAL".equalsIgnoreCase(task.getTaskDepTyp()) && task.getDepTaskId() != null) {
+                taskLiveRepository.findById(task.getDepTaskId()).ifPresent(pred -> {
+                    task.setLockReason("Waiting for predecessor task " + (pred.getTaskCd() != null ? pred.getTaskCd() : "") + " to be completed.");
+                });
+            } else if (task.getMId() != null) {
+                milestoneLiveRepository.findById(task.getMId()).ifPresent(ms -> {
+                    if (ms.getMlstnDepMId() != null) {
+                        milestoneLiveRepository.findById(ms.getMlstnDepMId()).ifPresent(predMs -> {
+                            task.setLockReason("Waiting for predecessor milestone " + (predMs.getMlstnCd() != null ? predMs.getMlstnCd() : "") + " to be closed.");
+                        });
+                    }
+                });
+            }
+        } else {
+            task.setIsSequentialLocked(false);
+        }
     }
 
     private void populateReviewerAndApprover(List<TaskLive> tasks) {
@@ -208,10 +230,12 @@ public class TaskLiveController {
         populateMilestoneAndProjectDetails(tasks);
 
         java.util.Set<Long> empIds = new java.util.HashSet<>();
+        java.util.Set<Long> extEmpIds = new java.util.HashSet<>();
         java.util.List<Long> taskIds = new java.util.ArrayList<>();
 
         for (TaskLive t : tasks) {
             if (t.getEmpId() != null) empIds.add(t.getEmpId());
+            if (t.getExtEmpId() != null) extEmpIds.add(t.getExtEmpId());
             if (t.getTaskId() != null) taskIds.add(t.getTaskId());
         }
 
@@ -235,6 +259,14 @@ public class TaskLiveController {
                         (v1, v2) -> v1
                 ));
 
+        java.util.Map<Long, String> extEmpNameMap = extEmpIds.isEmpty() ? java.util.Collections.emptyMap() :
+                externalEmployeeRepository.findAllById(extEmpIds).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        com.bionova.entity.ExternalEmployee::getExtEmpId,
+                        e -> e.getExtEmpNm() != null ? e.getExtEmpNm() : "",
+                        (v1, v2) -> v1
+                ));
+
         java.util.Map<Long, java.util.List<com.bionova.entity.ProcessConfig>> configMap = allConfigs.stream()
                 .filter(pc -> pc.getTaskId() != null)
                 .collect(java.util.stream.Collectors.groupingBy(com.bionova.entity.ProcessConfig::getTaskId));
@@ -244,6 +276,9 @@ public class TaskLiveController {
                 .collect(java.util.stream.Collectors.groupingBy(TeamMember::getTaskId));
 
         for (TaskLive task : tasks) {
+            if (task.getExtEmpId() != null) {
+                task.setExtEmpNm(extEmpNameMap.get(task.getExtEmpId()));
+            }
             task.setTeamMembers(teamMemberMap.getOrDefault(task.getTaskId(), java.util.Collections.emptyList()));
             java.util.List<com.bionova.entity.ProcessConfig> configs = configMap.getOrDefault(task.getTaskId(), java.util.Collections.emptyList());
             for (com.bionova.entity.ProcessConfig pc : configs) {
@@ -258,6 +293,25 @@ public class TaskLiveController {
                         task.setApproverNm(empNameMap.get(pc.getEmpId()));
                     }
                 }
+            }
+
+            if (!projectStatusCascadeService.isTaskPrerequisitesMet(task)) {
+                task.setIsSequentialLocked(true);
+                if (Boolean.TRUE.equals(task.getTaskDepFlg()) && "SEQUENTIAL".equalsIgnoreCase(task.getTaskDepTyp()) && task.getDepTaskId() != null) {
+                    taskLiveRepository.findById(task.getDepTaskId()).ifPresent(pred -> {
+                        task.setLockReason("Waiting for predecessor task " + (pred.getTaskCd() != null ? pred.getTaskCd() : "") + " to be completed.");
+                    });
+                } else if (task.getMId() != null) {
+                    milestoneLiveRepository.findById(task.getMId()).ifPresent(ms -> {
+                        if (ms.getMlstnDepMId() != null) {
+                            milestoneLiveRepository.findById(ms.getMlstnDepMId()).ifPresent(predMs -> {
+                                task.setLockReason("Waiting for predecessor milestone " + (predMs.getMlstnCd() != null ? predMs.getMlstnCd() : "") + " to be closed.");
+                            });
+                        }
+                    });
+                }
+            } else {
+                task.setIsSequentialLocked(false);
             }
         }
     }
@@ -367,6 +421,15 @@ public class TaskLiveController {
 
         if (task.getTaskSts() == null) {
             task.setTaskSts(TaskStatusMaster.OPEN);
+        }
+
+        if (task.getRawPriority() == null) {
+            ProjectLive project = projectLiveRepository.findById(milestone.getPrjId()).orElse(null);
+            if (project != null && project.getPrjPrty() != null) {
+                task.setPriority(project.getPrjPrty());
+            } else {
+                task.setPriority(TaskPriorityMaster.LOW);
+            }
         }
 
         // Auto-compute dates or days (inclusive: start=day1)
@@ -594,6 +657,13 @@ public class TaskLiveController {
             return ResponseEntity.badRequest()
                     .body(Map.of("message", "Invalid status. Allowed: DRAFT, OPEN, WIP, UNDER_REVIEW, SUBMIT_REVIEW, CLOSED, REASSIGN, REWORK, OVER_DUE, HOLD"));
         }
+
+        if (!"DRAFT".equals(upperStatus) && !"HOLD".equals(upperStatus)) {
+            if (!projectStatusCascadeService.isTaskPrerequisitesMet(task)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Cannot update status: Sequential predecessor task/milestone must be completed and closed first."));
+            }
+        }
+
         // SUBMIT_REVIEW is a frontend-only state → maps to WIP
         if ("SUBMIT_REVIEW".equals(upperStatus)) {
             task.setTaskSts(TaskStatusMaster.WIP);

@@ -19,12 +19,12 @@ import { apiGet } from "../../utils/api";
 import { getScreenPermission } from "../../utils/permissions";
 
 const EVENT_COLORS = {
-  task: "#10b981",       
+  task: "#2563eb",       
   milestone: "#f59e0b",  
   meeting: "#8b5cf6",    
   overdue: "#ef4444",    
   today: "#3b82f6",
-  holiday: "#0ea5e9",
+  holiday: "#e11d48",
   closed: "#4b5563"
 };
 
@@ -75,6 +75,16 @@ const Calendar = ({ userRole, onLogout }) => {
     return `${yyyy}-${mm}-${dd}`;
   };
 
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return "";
+    const clean = String(dateStr).split('T')[0].split(' ')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+  };
+
   const parseLocalDate = (dateStr) => {
     if (!dateStr) return null;
     const cleanStr = String(dateStr).split('T')[0].split(' ')[0];
@@ -111,73 +121,209 @@ const Calendar = ({ userRole, onLogout }) => {
       setError(null);
       try {
         const formattedDate = formatDateStr(currentDate);
-        const data = await apiGet(`/api/calendar/user-feed?viewType=${view}&date=${formattedDate}&showClosed=${showCompleted}`);
-        let allEvents = data || [];
+        const data = await apiGet(`/api/calendar/user-feed?viewType=${view}&date=${formattedDate}&showClosed=${showCompleted}`).catch(() => []);
+        const rawFeed = data || [];
+
+        let allEvents = [];
 
         try {
-          const profile = await apiGet("/api/profile");
+          const profile = await apiGet("/api/profile").catch(() => null);
           const liveTasks = await apiGet("/api/task-live").catch(() => []);
           const indTasks = await apiGet("/api/assignments").catch(() => []);
-          
-          if (profile) {
-            const empId = profile.empId || profile.empid || profile.id;
-            
-            let reviewApproveTasks = [];
-            if (Array.isArray(liveTasks)) {
-              reviewApproveTasks = liveTasks.filter(t => 
-                String(t.reviewerId) === String(empId) || 
-                String(t.approverId) === String(empId) ||
-                String(t.reviewer) === String(empId) ||
-                String(t.approver) === String(empId)
-              );
-            }
+          const rawHolidays = await apiGet("/api/calendar").catch(() => []);
 
-            let userIndTasks = [];
-            if (Array.isArray(indTasks)) {
-              userIndTasks = indTasks.filter(t => 
-                String(t.empId) === String(empId) ||
-                String(t.empid) === String(empId) ||
-                String(t.reviewerId) === String(empId) ||
-                String(t.approverId) === String(empId) ||
-                String(t.reviewer) === String(empId) ||
-                String(t.approver) === String(empId)
-              );
-            }
+          const empId = profile ? (profile.empId || profile.empid || profile.id) : null;
 
-            const combinedExtraTasks = [...reviewApproveTasks, ...userIndTasks];
+          // 1. Process Holidays from /api/calendar first
+          if (Array.isArray(rawHolidays)) {
+            rawHolidays.forEach(h => {
+              if (!h.calDt) return;
+              allEvents.push({
+                id: `HOLIDAY-${h.clId || h.id || Math.random()}`,
+                title: h.holidayNm || h.name || h.title || "Public Holiday",
+                type: 'holiday',
+                date: h.calDt,
+                status: h.holTyp || 'MANDATORY',
+                code: 'Public Holiday',
+                description: h.holidayNm || "Public Holiday"
+              });
+            });
+          }
 
-            const formattedExtraEvents = combinedExtraTasks.map(t => ({
-              id: t.empTaskId || t.emptaskid || t.taskId || t.taskid || t.taskCd || Math.random().toString(),
-              taskId: t.empTaskId || t.taskId || t.taskid,
-              type: 'task',
-              title: t.taskNm || t.taskName || t.taskTitle || "Task",
-              date: t.endDt || t.enddt || t.dueDate || t.date || "",
-              status: t.taskSts || t.tasksts || t.status || "OPEN",
-              code: t.taskCd || t.empTaskCd || "",
-              description: t.taskDesc || "",
-              actCmpDt: t.actCmpDt || t.actcmpdt || t.act_cmp_dt || t.completedTs || t.sbmtDt || "",
-              completed: t.completed,
-              closed: t.closed,
-              isClosed: t.isClosed,
-              progress: t.progress,
-              sts: t.sts
-            }));
+          // 2. Collect all employee tasks
+          let userTasks = [];
+          if (Array.isArray(liveTasks)) {
+            const userLive = liveTasks.filter(t => 
+              !empId ||
+              String(t.empId) === String(empId) ||
+              String(t.empid) === String(empId) ||
+              String(t.reviewerId) === String(empId) || 
+              String(t.approverId) === String(empId) ||
+              String(t.reviewer) === String(empId) ||
+              String(t.approver) === String(empId)
+            );
+            userTasks.push(...userLive);
+          }
 
-            const existingIds = new Set(allEvents.map(e => String(e.id || e.taskId)));
-            const existingTitleDates = new Set(allEvents.map(e => `${(e.title || "").trim().toLowerCase()}_${(e.date || "").trim()}`));
-            
-            formattedExtraEvents.forEach(e => {
-              const titleDateKey = `${(e.title || "").trim().toLowerCase()}_${(e.date || "").trim()}`;
-              
-              if (e.id && !existingIds.has(String(e.id)) && !existingTitleDates.has(titleDateKey)) {
-                allEvents.push(e);
-                existingIds.add(String(e.id));
-                existingTitleDates.add(titleDateKey);
+          if (Array.isArray(indTasks)) {
+            const userInd = indTasks.filter(t => 
+              !empId ||
+              String(t.empId) === String(empId) ||
+              String(t.empid) === String(empId) ||
+              String(t.reviewerId) === String(empId) ||
+              String(t.approverId) === String(empId) ||
+              String(t.reviewer) === String(empId) ||
+              String(t.approver) === String(empId)
+            );
+            userTasks.push(...userInd);
+          }
+
+          // Also include tasks from user-feed that might not be in liveTasks/indTasks
+          if (Array.isArray(rawFeed)) {
+            rawFeed.forEach(evt => {
+              const typeLower = (evt.type || "").toLowerCase();
+              if (typeLower === 'holiday') {
+                if (!allEvents.some(e => e.date === evt.date && (e.title || "").toLowerCase() === (evt.title || "").toLowerCase())) {
+                  allEvents.push(evt);
+                }
+              } else if (typeLower === 'milestone') {
+                allEvents.push(evt);
+              } else if (typeLower === 'task' || typeLower === 'overdue' || evt.taskId) {
+                const evtTaskId = String(evt.taskId || evt.id || '').replace(/^TASK-/, '');
+                const found = userTasks.some(t => String(t.taskId || t.empTaskId || t.id) === evtTaskId);
+                if (!found) {
+                  userTasks.push({
+                    taskId: evtTaskId,
+                    taskNm: evt.title,
+                    endDt: evt.date,
+                    stDt: evt.startDate || evt.stDt || evt.date,
+                    taskSts: evt.status,
+                    taskCd: evt.code,
+                    taskDesc: evt.description
+                  });
+                }
+              } else {
+                allEvents.push(evt);
               }
             });
           }
+
+          // 3. Process every task -> map strictly to Start Date and Due Date (no intermediate days)
+          const processedTaskKeys = new Set();
+
+          userTasks.forEach(t => {
+            const taskId = String(t.empTaskId || t.emptaskid || t.taskId || t.taskid || t.id || t.taskCd || Math.random().toString());
+            const title = t.taskNm || t.taskName || t.taskTitle || t.title || "Task";
+            const code = t.taskCd || t.empTaskCd || t.code || "";
+            const status = t.taskSts || t.tasksts || t.status || "OPEN";
+            const desc = t.taskDesc || t.description || "";
+            const actCmpDt = t.actCmpDt || t.actcmpdt || t.act_cmp_dt || t.completedTs || t.sbmtDt || "";
+
+            const rawSt = t.stDt || t.stdt || t.startDate || t.start_date || t.st_dt || "";
+            const rawEnd = t.endDt || t.enddt || t.dueDate || t.due_date || t.endDate || t.end_date || t.date || t.targetDt || "";
+
+            const cleanStart = rawSt ? String(rawSt).split('T')[0].split(' ')[0] : "";
+            const cleanEnd = rawEnd ? String(rawEnd).split('T')[0].split(' ')[0] : "";
+
+            const startStr = cleanStart || cleanEnd;
+            const endStr = cleanEnd || cleanStart;
+
+            if (!startStr && !endStr) return;
+
+            const isSameDay = !startStr || !endStr || startStr === endStr;
+
+            const subStatus = t.subStatus || t.sub_status || t.subSts || t.sub_sts || t.prcsYesActn || t.prcs_yes_actn || "";
+            const leadLagStatus = t.leadLagStatus || t.lead_lag_status || t.leadLagSts || t.lead_lag_sts || "";
+
+            if (isSameDay) {
+              const targetDate = endStr || startStr;
+              const taskKey = `${taskId}_${targetDate}`;
+              if (!processedTaskKeys.has(taskKey)) {
+                processedTaskKeys.add(taskKey);
+                allEvents.push({
+                  id: taskId,
+                  taskId: taskId,
+                  type: 'task',
+                  title: title,
+                  date: targetDate,
+                  startDate: startStr,
+                  endDate: endStr,
+                  dateBadge: 'Due Date',
+                  status: status,
+                  subStatus: subStatus,
+                  leadLagStatus: leadLagStatus,
+                  code: code,
+                  description: desc,
+                  actCmpDt: actCmpDt,
+                  completed: t.completed,
+                  closed: t.closed,
+                  isClosed: t.isClosed,
+                  progress: t.progress,
+                  sts: t.sts
+                });
+              }
+            } else {
+              // 1. Start Date only
+              const startKey = `${taskId}_${startStr}_start`;
+              if (!processedTaskKeys.has(startKey)) {
+                processedTaskKeys.add(startKey);
+                allEvents.push({
+                  id: `${taskId}-start`,
+                  taskId: taskId,
+                  type: 'task',
+                  title: title,
+                  date: startStr,
+                  startDate: startStr,
+                  endDate: endStr,
+                  dateBadge: 'Start Date',
+                  status: status,
+                  subStatus: subStatus,
+                  leadLagStatus: leadLagStatus,
+                  code: code,
+                  description: desc,
+                  actCmpDt: actCmpDt,
+                  completed: t.completed,
+                  closed: t.closed,
+                  isClosed: t.isClosed,
+                  progress: t.progress,
+                  sts: t.sts
+                });
+              }
+
+              // 2. Due Date only
+              const dueKey = `${taskId}_${endStr}_due`;
+              if (!processedTaskKeys.has(dueKey)) {
+                processedTaskKeys.add(dueKey);
+                allEvents.push({
+                  id: `${taskId}-due`,
+                  taskId: taskId,
+                  type: 'task',
+                  title: title,
+                  date: endStr,
+                  startDate: startStr,
+                  endDate: endStr,
+                  dateBadge: 'Due Date',
+                  status: status,
+                  subStatus: subStatus,
+                  leadLagStatus: leadLagStatus,
+                  code: code,
+                  description: desc,
+                  actCmpDt: actCmpDt,
+                  completed: t.completed,
+                  closed: t.closed,
+                  isClosed: t.isClosed,
+                  progress: t.progress,
+                  sts: t.sts
+                });
+              }
+            }
+          });
+
         } catch (extraErr) {
-          console.warn("Failed to fetch extra reviewer tasks", extraErr);
+          console.warn("Failed to fetch extra task dates", extraErr);
+          if (allEvents.length === 0) {
+            allEvents = rawFeed;
+          }
         }
 
         setEventsList(allEvents);
@@ -208,7 +354,7 @@ const Calendar = ({ userRole, onLogout }) => {
     const statusUpper = getEventStatusString(evt);
     const completedStatuses = [
       'COMPLETED', 'DONE', 'CLOSE', 'CLOSED', 'COMPLETE', 'FINISHED', 
-      '100%', 'INACTIVE', 'IN_ACTIVE', 'DEACTIVATED', 'RESOLVED', 'APPROVED', 'CANCELLED', 'ARCHIVED'
+      '100%', 'INACTIVE', 'IN_ACTIVE', 'DEACTIVATED', 'RESOLVED', 'APPROVED', 'CANCELLED', 'ARCHIVED', '4'
     ];
     const isCompletedStatus = completedStatuses.includes(statusUpper);
     const isCompletedBool = evt.completed === true || evt.closed === true || evt.isClosed === true || evt.progress === 100;
@@ -217,14 +363,103 @@ const Calendar = ({ userRole, onLogout }) => {
     return isCompletedStatus || isCompletedBool || isInactiveSts;
   };
 
+  // Helper to calculate Lead / Lag / On Time for popup modal
+  const calculateTaskLeadLag = (evt) => {
+    if (!evt) return null;
+    const isClosed = isEventClosed(evt);
+    if (!isClosed) return null;
+
+    const rawStatus = evt.leadLagStatus || evt.subStatus || evt.sub_status || evt.scheduleStatus || "";
+    const rawUpper = String(rawStatus).toUpperCase();
+    if (rawUpper.includes('LEAD') || rawUpper.includes('LAG') || rawUpper.includes('ON TIME') || rawUpper.includes('ONTIME')) {
+      if (rawUpper.includes('LEAD')) {
+        const daysMatch = String(rawStatus).match(/\d+/);
+        const days = daysMatch ? daysMatch[0] : null;
+        return {
+          status: 'LEAD',
+          label: days ? `LEAD (${days} DAYS)` : 'LEAD',
+          color: '#16a34a',
+          bg: '#dcfce7',
+          border: '#bbf7d0'
+        };
+      } else if (rawUpper.includes('LAG')) {
+        const daysMatch = String(rawStatus).match(/\d+/);
+        const days = daysMatch ? daysMatch[0] : null;
+        return {
+          status: 'LAG',
+          label: days ? `LAG (${days} DAYS)` : 'LAG',
+          color: '#dc2626',
+          bg: '#fee2e2',
+          border: '#fecaca'
+        };
+      } else {
+        return {
+          status: 'ON TIME',
+          label: 'ON TIME',
+          color: '#2563eb',
+          bg: '#dbeafe',
+          border: '#bfdbfe'
+        };
+      }
+    }
+
+    const targetStr = evt.endDate || evt.endDt || evt.dueDate || evt.due_date || evt.targetDt || evt.target_dt || evt.date;
+    const compStr = evt.actCmpDt || evt.actcmpdt || evt.act_cmp_dt || evt.completedTs || evt.sbmtDt;
+
+    if (!targetStr || !compStr) {
+      return {
+        status: 'ON TIME',
+        label: 'ON TIME',
+        color: '#2563eb',
+        bg: '#dbeafe',
+        border: '#bfdbfe'
+      };
+    }
+
+    try {
+      const targetDate = parseLocalDate(targetStr);
+      const compDate = parseLocalDate(compStr);
+      if (!targetDate || !compDate) return null;
+
+      targetDate.setHours(0,0,0,0);
+      compDate.setHours(0,0,0,0);
+
+      const diffTime = targetDate.getTime() - compDate.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 0) {
+        return {
+          status: 'LEAD',
+          label: `LEAD (${diffDays} DAYS)`,
+          color: '#16a34a',
+          bg: '#dcfce7',
+          border: '#bbf7d0'
+        };
+      } else if (diffDays < 0) {
+        return {
+          status: 'LAG',
+          label: `LAG (${Math.abs(diffDays)} DAYS)`,
+          color: '#dc2626',
+          bg: '#fee2e2',
+          border: '#fecaca'
+        };
+      } else {
+        return {
+          status: 'ON TIME',
+          label: 'ON TIME',
+          color: '#2563eb',
+          bg: '#dbeafe',
+          border: '#bfdbfe'
+        };
+      }
+    } catch (_) {
+      return null;
+    }
+  };
+
   const getEventDateString = (evt) => {
     if (!evt) return "";
-    let raw = "";
-    if (isEventClosed(evt)) {
-      raw = evt.actCmpDt || evt.actcmpdt || evt.act_cmp_dt || evt.completedTs || evt.sbmtDt || evt.date || evt.dueDate || evt.tentEndDt || evt.tent_end_dt || evt.endDate || evt.end_date || evt.endDt || evt.enddt || "";
-    } else {
-      raw = evt.date || evt.dueDate || evt.tentEndDt || evt.tent_end_dt || evt.endDate || evt.end_date || evt.endDt || evt.enddt || evt.actCmpDt || evt.actcmpdt || evt.act_cmp_dt || "";
-    }
+    let raw = evt.date || evt.dueDate || evt.tentEndDt || evt.tent_end_dt || evt.endDate || evt.end_date || evt.endDt || evt.enddt || evt.actCmpDt || evt.actcmpdt || evt.act_cmp_dt || "";
     if (!raw) return "";
     
     let cleanStr = String(raw).split('T')[0].split(' ')[0];
@@ -350,6 +585,10 @@ const Calendar = ({ userRole, onLogout }) => {
   const getUpcomingEvents = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
     const next7Days = new Date(today);
     next7Days.setDate(today.getDate() + 7);
     next7Days.setHours(23, 59, 59, 999);
@@ -371,7 +610,7 @@ const Calendar = ({ userRole, onLogout }) => {
         const evtDate = parseLocalDate(dateVal);
         if (!evtDate) return false;
         evtDate.setHours(0, 0, 0, 0);
-        return evtDate >= today && evtDate <= next7Days;
+        return evtDate >= tomorrow && evtDate <= next7Days;
       })
       .sort((a, b) => new Date(getEventDateString(a)) - new Date(getEventDateString(b)));
   };
@@ -561,15 +800,33 @@ const Calendar = ({ userRole, onLogout }) => {
                         <div className="day-events-list">
                           {dayEvents.slice(0, 3).map((evt, idx) => {
                             const eventType = getEventType(evt);
+                            const isStart = evt.dateBadge === 'Start Date';
+                            const dotColor = isStart ? '#10b981' : (EVENT_COLORS[eventType] || EVENT_COLORS.task);
                             return (
                               <div 
                                 key={idx} 
                                 className="calendar-event-item" 
                                 style={{ cursor: "pointer" }}
                               >
-                                <span className="event-dot" style={{ backgroundColor: EVENT_COLORS[eventType] || EVENT_COLORS.task }}></span>
+                                <span className="event-dot" style={{ backgroundColor: dotColor }}></span>
                                 <div className="event-text">
-                                  <span className="event-title">{evt.title}</span>
+                                  <span className="event-title">
+                                    {evt.dateBadge && (
+                                      <span style={{ 
+                                        fontSize: '9.5px', 
+                                        fontWeight: '700', 
+                                        color: isStart ? '#059669' : '#2563eb',
+                                        marginRight: '4px',
+                                        backgroundColor: isStart ? '#ecfdf5' : '#eff6ff',
+                                        padding: '1px 4px',
+                                        borderRadius: '3px',
+                                        display: 'inline-block'
+                                      }}>
+                                        {isStart ? 'Start' : 'Due'}
+                                      </span>
+                                    )}
+                                    {evt.title}
+                                  </span>
                                   {evt.time && <span className="event-subtitle">{evt.time}</span>}
                                 </div>
                               </div>
@@ -602,7 +859,11 @@ const Calendar = ({ userRole, onLogout }) => {
               {/* Legend */}
               <div className="calendar-legend">
                 <div className="legend-item">
-                  <span className="legend-dot" style={{ backgroundColor: EVENT_COLORS.task }}></span>
+                  <span className="legend-dot" style={{ backgroundColor: "#10b981" }}></span>
+                  Task Start Date
+                </div>
+                <div className="legend-item">
+                  <span className="legend-dot" style={{ backgroundColor: "#2563eb" }}></span>
                   Task Due Date
                 </div>
                 <div className="legend-item">
@@ -614,8 +875,8 @@ const Calendar = ({ userRole, onLogout }) => {
                   Overdue
                 </div>
                 <div className="legend-item">
-                  <span className="legend-dot" style={{ backgroundColor: EVENT_COLORS.today }}></span>
-                  Today
+                  <span className="legend-dot" style={{ backgroundColor: EVENT_COLORS.holiday }}></span>
+                  Holiday
                 </div>
               </div>
             </div>
@@ -657,12 +918,28 @@ const Calendar = ({ userRole, onLogout }) => {
                 <div className="upcoming-list">
                   {getUpcomingEvents().map((evt) => {
                     const eventType = getEventType(evt);
+                    const isStart = evt.dateBadge === 'Start Date';
+                    const dotColor = isStart ? '#10b981' : (EVENT_COLORS[eventType] || EVENT_COLORS.task);
+
                     const parsedDate = parseLocalDate(evt.date);
                     const formattedDate = parsedDate ? parsedDate.toLocaleDateString('en-GB', {
                       day: '2-digit',
                       month: 'short',
                       year: 'numeric'
                     }) : evt.date;
+
+                    const rawStart = evt.startDate || evt.stDt || evt.stdt || evt.start_date || evt.st_dt;
+                    const parsedStart = parseLocalDate(rawStart);
+                    const formattedStart = parsedStart ? parsedStart.toLocaleDateString('en-GB', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric'
+                    }) : rawStart;
+
+                    let dateDisplay = formattedDate;
+                    if (formattedStart && formattedStart !== formattedDate) {
+                      dateDisplay = `${formattedStart} - ${formattedDate}`;
+                    }
 
                     return (
                       <div 
@@ -672,17 +949,19 @@ const Calendar = ({ userRole, onLogout }) => {
                         style={{ cursor: "pointer" }}
                       >
                         <div className="upcoming-icon" style={{ 
-                          color: EVENT_COLORS[eventType] || EVENT_COLORS.task, 
-                          backgroundColor: (EVENT_COLORS[eventType] || EVENT_COLORS.task) + '15' 
+                          color: dotColor, 
+                          backgroundColor: dotColor + '15' 
                         }}>
                           <CalendarIcon size={18} />
                         </div>
                         <div className="upcoming-details">
                           <div className="upcoming-title">{evt.title}</div>
-                          <div className="upcoming-subtitle" style={{ textTransform: 'capitalize' }}>{eventType}</div>
+                          <div className="upcoming-subtitle" style={{ textTransform: 'capitalize' }}>
+                            {evt.dateBadge ? `${evt.dateBadge}` : eventType}
+                          </div>
                         </div>
                         <div className="upcoming-time">
-                          {formattedDate}
+                          {dateDisplay}
                           {evt.time && <><br/>{evt.time}</>}
                         </div>
                       </div>
@@ -755,8 +1034,6 @@ const Calendar = ({ userRole, onLogout }) => {
                 </div>
               </div>
 
-
-
             </div>
           </div>
         </main>
@@ -782,9 +1059,15 @@ const Calendar = ({ userRole, onLogout }) => {
                   <strong>Code:</strong> {selectedEvent.code}
                 </div>
               )}
-              <div className="event-modal-meta">
-                <strong>Date:</strong> {selectedEvent.date ? selectedEvent.date.split('-').reverse().join('/') : ''} {selectedEvent.time ? `@ ${selectedEvent.time}` : ''}
-              </div>
+              {selectedEvent.startDate && selectedEvent.endDate && selectedEvent.startDate !== selectedEvent.endDate ? (
+                <div className="event-modal-meta">
+                  <strong>Date Range:</strong> Start: {formatDateDisplay(selectedEvent.startDate)} &nbsp;•&nbsp; Due: {formatDateDisplay(selectedEvent.endDate)}
+                </div>
+              ) : (
+                <div className="event-modal-meta">
+                  <strong>Date:</strong> {selectedEvent.date ? formatDateDisplay(selectedEvent.date) : ''} {selectedEvent.time ? `@ ${selectedEvent.time}` : ''}
+                </div>
+              )}
               {selectedEvent.status && (
                 <div className="event-modal-meta">
                   <strong>Status:</strong> <span className={`status-badge status-${selectedEvent.status.toLowerCase()}`}>{selectedEvent.status}</span>
@@ -842,9 +1125,26 @@ const Calendar = ({ userRole, onLogout }) => {
                   <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
                     {formatModalDateHeader(selectedDateEvents.date)}
                   </h3>
-                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#2563eb', marginTop: '2px', display: 'block' }}>
-                    {selectedDateEvents.events.length} {selectedDateEvents.events.length === 1 ? 'Event & Task' : 'Events & Tasks'}
-                  </span>
+                  {(() => {
+                    const taskCount = selectedDateEvents.events.filter(e => {
+                      const t = getEventType(e);
+                      return t === 'task' || t === 'overdue' || t === 'closed';
+                    }).length;
+                    const holCount = selectedDateEvents.events.filter(e => getEventType(e) === 'holiday').length;
+                    let countLabel = `${selectedDateEvents.events.length} Events`;
+                    if (taskCount > 0 && holCount > 0) {
+                      countLabel = `${taskCount} ${taskCount === 1 ? 'Task' : 'Tasks'} • ${holCount} ${holCount === 1 ? 'Holiday' : 'Holidays'}`;
+                    } else if (holCount > 0) {
+                      countLabel = `${holCount} ${holCount === 1 ? 'Holiday' : 'Holidays'}`;
+                    } else if (taskCount > 0) {
+                      countLabel = `${taskCount} ${taskCount === 1 ? 'Task' : 'Tasks'}`;
+                    }
+                    return (
+                      <span style={{ fontSize: '13px', fontWeight: '600', color: '#2563eb', marginTop: '2px', display: 'block' }}>
+                        {countLabel}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
               <button className="close-modal-btn" onClick={() => setSelectedDateEvents(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '24px', lineHeight: 1 }}>&times;</button>
@@ -880,6 +1180,7 @@ const Calendar = ({ userRole, onLogout }) => {
               ) : (
                 selectedDateEvents.events.map((evt, idx) => {
                   const eventType = getEventType(evt);
+                  const isStart = evt.dateBadge === 'Start Date';
                   return (
                     <div 
                       key={idx} 
@@ -889,7 +1190,7 @@ const Calendar = ({ userRole, onLogout }) => {
                         borderBottom: idx !== selectedDateEvents.events.length - 1 ? '1px dashed #cbd5e1' : 'none'
                       }}
                     >
-                      <div style={{ marginBottom: '12px' }}>
+                      <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <span className="event-modal-badge" style={{ 
                           backgroundColor: (EVENT_COLORS[eventType] || EVENT_COLORS.task) + '20', 
                           color: EVENT_COLORS[eventType] || EVENT_COLORS.task,
@@ -902,6 +1203,19 @@ const Calendar = ({ userRole, onLogout }) => {
                         }}>
                           {evt.type || 'TASK'}
                         </span>
+                        {evt.dateBadge && (
+                          <span style={{
+                            backgroundColor: isStart ? '#ecfdf5' : '#eff6ff',
+                            color: isStart ? '#059669' : '#2563eb',
+                            border: `1px solid ${isStart ? '#a7f3d0' : '#bfdbfe'}`,
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: '700'
+                          }}>
+                            {evt.dateBadge}
+                          </span>
+                        )}
                       </div>
                       
                       <h3 className="event-modal-title">{evt.title}</h3>
@@ -912,20 +1226,76 @@ const Calendar = ({ userRole, onLogout }) => {
                         </div>
                       )}
                       
-                      <div className="event-modal-meta">
-                        <strong>Date:</strong> {evt.date ? evt.date.split('-').reverse().join('/') : ''} {evt.time ? `@ ${evt.time}` : ''}
-                      </div>
-                      
-                      {evt.status && (
+                      {evt.startDate && evt.endDate && evt.startDate !== evt.endDate ? (
                         <div className="event-modal-meta">
-                          <strong>Status:</strong> <span className={`status-badge status-${evt.status.toLowerCase()}`}>{evt.status}</span>
+                          <strong>Date Range:</strong> Start: {formatDateDisplay(evt.startDate)} &nbsp;•&nbsp; Due: {formatDateDisplay(evt.endDate)}
+                        </div>
+                      ) : (
+                        <div className="event-modal-meta">
+                          <strong>Date:</strong> {evt.date ? formatDateDisplay(evt.date) : ''} {evt.time ? `@ ${evt.time}` : ''}
                         </div>
                       )}
                       
-                      {(evt.subStatus || evt.processStatus || evt.taskSts) && (
-                        <div className="event-modal-meta">
-                          <strong>Process Status:</strong> <span className="status-badge" style={{ backgroundColor: "#e2e8f0", color: "#475569" }}>{evt.subStatus || evt.processStatus || evt.taskSts}</span>
-                        </div>
+                      {isEventClosed(evt) ? (
+                        <>
+                          <div className="event-modal-meta" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                            <strong>Status:</strong> 
+                            <span style={{ 
+                              backgroundColor: '#dcfce7', 
+                              color: '#16a34a', 
+                              border: '1px solid #bbf7d0',
+                              padding: '2px 8px', 
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              textTransform: 'uppercase'
+                            }}>
+                              Closed
+                            </span>
+                          </div>
+                          {calculateTaskLeadLag(evt) && (
+                            <div className="event-modal-meta" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                              <strong>Schedule:</strong>
+                              {(() => {
+                                const ll = calculateTaskLeadLag(evt);
+                                return (
+                                  <span style={{
+                                    backgroundColor: ll.bg,
+                                    color: ll.color,
+                                    border: `1px solid ${ll.border}`,
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}>
+                                    ● {ll.label}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          )}
+                          {evt.actCmpDt && (
+                            <div className="event-modal-meta" style={{ marginTop: '6px' }}>
+                              <strong>Completed On:</strong> {formatDateDisplay(evt.actCmpDt)}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {evt.status && (
+                            <div className="event-modal-meta" style={{ marginTop: '6px' }}>
+                              <strong>Status:</strong> <span className={`status-badge status-${evt.status.toLowerCase()}`}>{evt.status}</span>
+                            </div>
+                          )}
+                          {(evt.subStatus || evt.processStatus || evt.taskSts) && (
+                            <div className="event-modal-meta" style={{ marginTop: '6px' }}>
+                              <strong>Process Status:</strong> <span className="status-badge" style={{ backgroundColor: "#e2e8f0", color: "#475569" }}>{evt.subStatus || evt.processStatus || evt.taskSts}</span>
+                            </div>
+                          )}
+                        </>
                       )}
                       
                       {evt.subTasks && evt.subTasks.length > 0 && (

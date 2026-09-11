@@ -32,18 +32,17 @@ const getNotifPriorityInfo = (notif) => {
 
 const formatDisplayName = (nameStr, emailStr) => {
   let cleaned = nameStr;
-  if (!cleaned || cleaned === "User" || cleaned.toLowerCase() === "admin" || cleaned.includes("@")) {
-    const stored = sessionStorage.getItem("userName");
-    if (stored && stored !== "User" && stored.toLowerCase() !== "admin" && !stored.includes("@")) {
-      cleaned = stored;
-    }
+  const stored = sessionStorage.getItem("userName");
+  if (stored && stored !== "User" && stored.toLowerCase() !== "admin" && !stored.includes("@")) {
+    cleaned = stored;
   }
-  if (!cleaned || cleaned.toLowerCase() === "admin" || cleaned.includes("@")) {
+
+  if (!cleaned || cleaned === "User" || cleaned.toLowerCase() === "admin" || cleaned.includes("@")) {
     if (emailStr && (emailStr.toLowerCase().includes("admin") || emailStr === "admin@example.com" || emailStr === "admin@atirath.com")) {
       return "Syed Mohammad Johny Basha";
     }
   }
-  if (cleaned && typeof cleaned === 'string' && cleaned.trim() !== '' && !cleaned.includes('@')) {
+  if (cleaned && typeof cleaned === 'string' && cleaned.trim() !== '' && !cleaned.includes('@') && cleaned !== 'User') {
     if (cleaned.toLowerCase() === "admin" && emailStr && emailStr.toLowerCase().includes("admin")) {
       return "Syed Mohammad Johny Basha";
     }
@@ -54,13 +53,14 @@ const formatDisplayName = (nameStr, emailStr) => {
     if (target.toLowerCase().includes("admin")) {
       return "Syed Mohammad Johny Basha";
     }
-    const namePart = target.split('@')[0];
+    const namePart = target.split('@')[0].replace(/[0-9]/g, '');
     return namePart
       .split(/[._-]/)
+      .filter(Boolean)
       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' ');
+      .join(' ') || 'User';
   }
-  return cleaned || 'Syed Mohammad Johny Basha';
+  return cleaned || 'User';
 };
 
 const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPercent, userName: propUserName, userRole: propUserRole, initials: propInitials }) => {
@@ -81,21 +81,6 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
   const [userAccountStatus, setUserAccountStatus] = useState(sessionStorage.getItem("userAccountStatus") || "Active");
 
   useEffect(() => {
-    // Fetch details dynamically from sessionStorage
-    let storedName = sessionStorage.getItem("userName");
-    const email = sessionStorage.getItem("userEmail") || "";
-    let storedRole = sessionStorage.getItem("userDesignation") || sessionStorage.getItem("userRole") || "Super Admin";
-    let storedPhoto = sessionStorage.getItem("userPhoto");
-    let storedStatus = sessionStorage.getItem("userAccountStatus");
-    
-    setUserEmail(email);
-
-    if (propUserName) setUserName(propUserName);
-    else if (storedName) setUserName(storedName);
-    if (storedRole) setUserRole(storedRole);
-    if (storedPhoto) setPhotoUrl(storedPhoto);
-    if (storedStatus) setUserAccountStatus(storedStatus);
-
     const updateInitials = (nameStr) => {
       if (!nameStr) return;
       const nameParts = nameStr.trim().split(" ");
@@ -108,7 +93,27 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
       setInitials(init.toUpperCase());
     };
 
-    if (storedName) updateInitials(storedName);
+    // Fetch details dynamically from sessionStorage
+    let storedName = sessionStorage.getItem("userName");
+    const email = sessionStorage.getItem("userEmail") || "";
+    let storedRole = sessionStorage.getItem("userDesignation") || sessionStorage.getItem("userRole") || "Super Admin";
+    let storedPhoto = sessionStorage.getItem("userPhoto");
+    let storedStatus = sessionStorage.getItem("userAccountStatus");
+    
+    setUserEmail(email);
+
+    if (storedName && storedName.trim() !== "" && storedName !== "User" && !storedName.includes("@")) {
+      setUserName(storedName);
+      updateInitials(storedName);
+    } else if (propUserName && propUserName.trim() !== "" && propUserName !== "User" && !propUserName.includes("@")) {
+      setUserName(propUserName);
+      updateInitials(propUserName);
+    } else if (storedName) {
+      updateInitials(storedName);
+    }
+    if (storedRole) setUserRole(storedRole);
+    if (storedPhoto) setPhotoUrl(storedPhoto);
+    if (storedStatus) setUserAccountStatus(storedStatus);
 
     // Fetch notifications from backend
     fetchNotifications();
@@ -813,7 +818,7 @@ const Header = ({ title, subtitle, showSearch = false, statusBadge, progressPerc
         {/* Animated Welcome Message (Shows only once after login) */}
         {showWelcome && (
           <div className="welcome-toast">
-            <span>🎉 {getGreeting()}, <strong style={{ fontWeight: '700' }}>{formatDisplayName(propUserName || userName, userEmail)}</strong>!</span>
+            <span>🎉 {getGreeting()}, <strong style={{ fontWeight: '700' }}>{formatDisplayName(userName || propUserName, userEmail)}</strong>!</span>
           </div>
         )}
       </header>

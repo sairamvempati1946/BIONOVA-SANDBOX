@@ -53,7 +53,7 @@ public class ExternalTaskAccessService {
     @Autowired
     private EmployeeRepository employeeRepository;
 
-    @Value("${app.base-url:https://bionova-sable.vercel.app}")
+    @Value("${app.base-url:https://bionova-sandbox.vercel.app}")
     private String baseUrl;
 
     /**

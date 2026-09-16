@@ -28,7 +28,7 @@ public class PasswordResetService {
     private final JavaMailSender mailSender;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${app.base-url:https://bionova-sable.vercel.app}")
+    @Value("${app.base-url:https://bionova-sandbox.vercel.app}")
     private String baseUrl;
 
     @Value("${app.server-base-url:http://localhost:8080}")

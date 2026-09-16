@@ -27,7 +27,7 @@ public class AuthController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.bionova.security.JwtUtil jwtUtil;
 
-    @org.springframework.beans.factory.annotation.Value("${app.base-url:https://bionova-sable.vercel.app}")
+    @org.springframework.beans.factory.annotation.Value("${app.base-url:https://bionova-sandbox.vercel.app}")
     private String baseUrl;
 
     public AuthController(AuthService authService,

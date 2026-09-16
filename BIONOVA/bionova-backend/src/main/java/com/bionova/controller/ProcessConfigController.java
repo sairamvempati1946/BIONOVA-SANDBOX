@@ -97,7 +97,33 @@ public class ProcessConfigController {
 
     // ── INDIVIDUAL TASK Process Config ──────────────────────────────────────
 
-    @PostMapping("/assignments/{empTaskId}")
+    @PostMapping({"/assignments/{empTaskId}/bulk", "/individual-task/{empTaskId}/bulk"})
+    public ResponseEntity<?> bulkSaveIndividualTaskSteps(
+            @PathVariable Long empTaskId,
+            @RequestBody List<ProcessConfig> configs) {
+
+        processConfigRepo.deleteByEmpTaskId(empTaskId);
+
+        if (configs == null || configs.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        List<ProcessConfig> saved = new java.util.ArrayList<>();
+        for (ProcessConfig config : configs) {
+            if (config.getEmpId() == null && config.getExtEmpId() == null) continue;
+            config.setPcId(null);
+            config.setRId(getRoleIdForOrder(config.getOrdrId()));
+            config.setEmpTaskId(empTaskId);
+            config.setTaskId(null);
+            config.setIsLive(false);
+            ProcessConfig s = processConfigRepo.save(config);
+            sendAssignmentNotification(s);
+            saved.add(s);
+        }
+        return ResponseEntity.ok(saved);
+    }
+
+    @PostMapping({"/assignments/{empTaskId}", "/individual-task/{empTaskId}"})
     public ResponseEntity<?> addIndividualTaskStep(
             @PathVariable Long empTaskId,
             @RequestBody ProcessConfig config) {
@@ -107,17 +133,44 @@ public class ProcessConfigController {
                     .body(Map.of("message", "empId or extEmpId must be provided to assign a reviewer/approver."));
         }
 
-        config.setRId(getRoleIdForOrder(config.getOrdrId()));
-        config.setEmpTaskId(empTaskId);
-        config.setTaskId(null); 
-        config.setIsLive(false); // Does not matter as it uses empTaskId
+        // If step with same ordrId already exists for this assignment, update it
+        List<ProcessConfig> existing = processConfigRepo.findByEmpTaskIdOrderByOrdrIdAsc(empTaskId);
+        ProcessConfig target = null;
+        for (ProcessConfig pc : existing) {
+            if (config.getOrdrId() != null && config.getOrdrId().equals(pc.getOrdrId())) {
+                target = pc;
+                break;
+            }
+        }
 
-        ProcessConfig saved = processConfigRepo.save(config);
-        sendAssignmentNotification(saved);
-        return ResponseEntity.ok(saved);
+        if (target != null) {
+            target.setEmpId(config.getEmpId());
+            target.setExtEmpId(config.getExtEmpId());
+            target.setStepType(config.getStepType());
+            target.setStepLabel(config.getStepLabel());
+            target.setRId(getRoleIdForOrder(target.getOrdrId()));
+            ProcessConfig saved = processConfigRepo.save(target);
+            sendAssignmentNotification(saved);
+            return ResponseEntity.ok(saved);
+        } else {
+            config.setRId(getRoleIdForOrder(config.getOrdrId()));
+            config.setEmpTaskId(empTaskId);
+            config.setTaskId(null); 
+            config.setIsLive(false); // Does not matter as it uses empTaskId
+
+            ProcessConfig saved = processConfigRepo.save(config);
+            sendAssignmentNotification(saved);
+            return ResponseEntity.ok(saved);
+        }
     }
 
-    @GetMapping("/assignments/{empTaskId}")
+    @DeleteMapping({"/assignments/{empTaskId}", "/individual-task/{empTaskId}"})
+    public ResponseEntity<Void> deleteIndividualTaskSteps(@PathVariable Long empTaskId) {
+        processConfigRepo.deleteByEmpTaskId(empTaskId);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping({"/assignments/{empTaskId}", "/individual-task/{empTaskId}"})
     public List<ProcessConfig> getIndividualTaskSteps(@PathVariable Long empTaskId) {
         return processConfigRepo.findByEmpTaskIdOrderByOrdrIdAsc(empTaskId);
     }

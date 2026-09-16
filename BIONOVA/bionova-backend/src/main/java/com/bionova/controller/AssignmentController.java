@@ -397,6 +397,11 @@ public class AssignmentController {
                 if (task.getTaskSts() != null) existing.setTaskSts(task.getTaskSts());
                 if (task.getRemarks() != null) existing.setRemarks(task.getRemarks());
                 if (task.getSts() != null) existing.setSts(task.getSts());
+                
+                if (Boolean.FALSE.equals(existing.getPrcsFlg())) {
+                    processConfigRepo.deleteByEmpTaskId(taskId);
+                }
+                
                 saved = repository.save(existing);
             } else {
                 if (task.getTaskSts() == null) task.setTaskSts(TaskStatusMaster.OPEN);
@@ -429,7 +434,7 @@ public class AssignmentController {
         }
 
         if (task.getTaskSts() == null) {
-            task.setTaskSts(TaskStatusMaster.DRAFT);
+            task.setTaskSts(TaskStatusMaster.OPEN);
         }
 
         if (task.getPriority() == null) {
@@ -480,6 +485,10 @@ public class AssignmentController {
         }
         task.setRemarks(details.getRemarks());
         task.setSts(details.getSts());
+
+        if (Boolean.FALSE.equals(task.getPrcsFlg())) {
+            processConfigRepo.deleteByEmpTaskId(id);
+        }
 
         Assignment updated = repository.save(task);
         populateReviewerAndApprover(updated);

@@ -141,14 +141,9 @@ public class RbacGuardFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        String method = request.getMethod();
-        if ("OPTIONS".equalsIgnoreCase(method)) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
         // Bypass GET requests for companies, plants, employees, designations, and departments so regular employees can load names, dropdown options and logos
         String requestPath = request.getRequestURI();
+        String method = request.getMethod();
         if ("GET".equalsIgnoreCase(method)) {
             if (requestPath.contains("/api/companies") || 
                 requestPath.contains("/api/plants") ||

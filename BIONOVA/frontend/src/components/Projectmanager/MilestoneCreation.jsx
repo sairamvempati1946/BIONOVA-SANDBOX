@@ -1845,12 +1845,14 @@ const MilestoneCreation = ({ onLogout, userRole }) => {
           let process = { enabled: false, reviewer_id: "", approver_id: "", steps: [] };
           const prcsEnabled = t.prcsFlg || t.prcs_flg || false;
           if (prcsEnabled) {
-            const reviewerStep = processSteps.find(s => s.stepType === "REVIEWER");
-            const approverStep = processSteps.find(s => s.stepType === "APPROVER");
+            const revSteps = processSteps.filter(s => (s.stepType && s.stepType.toUpperCase() === "REVIEWER") || (!s.stepType && (s.ordrId === 1 || s.ordr_id === 1)));
+            const appSteps = processSteps.filter(s => (s.stepType && s.stepType.toUpperCase() === "APPROVER") || (!s.stepType && (s.ordrId > 1 || s.ordr_id > 1)));
             process = {
               enabled: true,
-              reviewer_id: reviewerStep ? (reviewerStep.empId || reviewerStep.emp_id || "") : "",
-              approver_id: approverStep ? (approverStep.empId || approverStep.emp_id || "") : "",
+              reviewer_id: revSteps.length > 0 ? (revSteps[0].empId || revSteps[0].emp_id || "") : "",
+              approver_id: appSteps.length > 0 ? (appSteps[0].empId || appSteps[0].emp_id || "") : "",
+              reviewer_ids: revSteps.map(r => String(r.empId || r.emp_id)),
+              approver_ids: appSteps.map(a => String(a.empId || a.emp_id)),
               steps: processSteps
             };
           }
@@ -1961,12 +1963,14 @@ const MilestoneCreation = ({ onLogout, userRole }) => {
           let process = { enabled: false, reviewer_id: "", approver_id: "", steps: [] };
           const prcsEnabled = t.prcsFlg || t.prcs_flg || false;
           if (prcsEnabled) {
-            const reviewerStep = processSteps.find(s => s.stepType === "REVIEWER");
-            const approverStep = processSteps.find(s => s.stepType === "APPROVER");
+            const revSteps = processSteps.filter(s => (s.stepType && s.stepType.toUpperCase() === "REVIEWER") || (!s.stepType && (s.ordrId === 1 || s.ordr_id === 1)));
+            const appSteps = processSteps.filter(s => (s.stepType && s.stepType.toUpperCase() === "APPROVER") || (!s.stepType && (s.ordrId > 1 || s.ordr_id > 1)));
             process = {
               enabled: true,
-              reviewer_id: reviewerStep ? (reviewerStep.empId || reviewerStep.emp_id || "") : "",
-              approver_id: approverStep ? (approverStep.empId || approverStep.emp_id || "") : "",
+              reviewer_id: revSteps.length > 0 ? (revSteps[0].empId || revSteps[0].emp_id || "") : "",
+              approver_id: appSteps.length > 0 ? (appSteps[0].empId || appSteps[0].emp_id || "") : "",
+              reviewer_ids: revSteps.map(r => String(r.empId || r.emp_id)),
+              approver_ids: appSteps.map(a => String(a.empId || a.emp_id)),
               steps: processSteps
             };
           }
@@ -2133,12 +2137,14 @@ const MilestoneCreation = ({ onLogout, userRole }) => {
         let process = { enabled: false, reviewer_id: "", approver_id: "", steps: [] };
         const prcsEnabled = t.prcsFlg || t.prcs_flg || false;
         if (prcsEnabled) {
-          const reviewerStep = processSteps.find(s => s.stepType === "REVIEWER");
-          const approverStep = processSteps.find(s => s.stepType === "APPROVER");
+          const revSteps = processSteps.filter(s => (s.stepType && s.stepType.toUpperCase() === "REVIEWER") || (!s.stepType && (s.ordrId === 1 || s.ordr_id === 1)));
+          const appSteps = processSteps.filter(s => (s.stepType && s.stepType.toUpperCase() === "APPROVER") || (!s.stepType && (s.ordrId > 1 || s.ordr_id > 1)));
           process = {
             enabled: true,
-            reviewer_id: reviewerStep ? (reviewerStep.empId || reviewerStep.emp_id || "") : "",
-            approver_id: approverStep ? (approverStep.empId || approverStep.emp_id || "") : "",
+            reviewer_id: revSteps.length > 0 ? (revSteps[0].empId || revSteps[0].emp_id || "") : "",
+            approver_id: appSteps.length > 0 ? (appSteps[0].empId || appSteps[0].emp_id || "") : "",
+            reviewer_ids: revSteps.map(r => String(r.empId || r.emp_id)),
+            approver_ids: appSteps.map(a => String(a.empId || a.emp_id)),
             steps: processSteps
           };
         }
@@ -2684,13 +2690,22 @@ const MilestoneCreation = ({ onLogout, userRole }) => {
               if (task.task_typ === "INTERNAL") { const emp = employees.find(e => e.emp_id === parseInt(task.emp_id)); assigneeName = emp ? emp.emp_nm : "Not Assigned"; }
               else { const emp = externalEmployees.find(e => e.ext_emp_id === parseInt(task.ext_emp_id)); assigneeName = emp ? (emp.ext_emp_nm || emp.name) : "Not Assigned"; }
               const assignedTo = [{ role: "Executor", name: assigneeName }];
-              if (task.process?.enabled && task.process?.reviewer_id) {
-                const rev = employees.find(e => String(e.emp_id) === String(task.process.reviewer_id));
-                assignedTo.push({ role: "Reviewer", name: rev ? rev.emp_nm : "Not Selected" });
-              }
-              if (task.process?.enabled && task.process?.approver_id) {
-                const app = employees.find(e => String(e.emp_id) === String(task.process.approver_id));
-                assignedTo.push({ role: "Approver", name: app ? app.emp_nm : "Not Selected" });
+              if (task.process?.enabled) {
+                const revIds = (task.process?.reviewer_ids && task.process.reviewer_ids.length > 0)
+                  ? task.process.reviewer_ids
+                  : (task.process?.reviewer_id ? [task.process.reviewer_id] : []);
+                revIds.forEach((rId, rIdx) => {
+                  const rev = employees.find(e => String(e.emp_id) === String(rId));
+                  assignedTo.push({ role: revIds.length > 1 ? `Reviewer ${rIdx + 1}` : "Reviewer", name: rev ? rev.emp_nm : "Not Selected" });
+                });
+
+                const appIds = (task.process?.approver_ids && task.process.approver_ids.length > 0)
+                  ? task.process.approver_ids
+                  : (task.process?.approver_id ? [task.process.approver_id] : []);
+                appIds.forEach((aId, aIdx) => {
+                  const app = employees.find(e => String(e.emp_id) === String(aId));
+                  assignedTo.push({ role: appIds.length > 1 ? `Approver ${aIdx + 1}` : "Approver", name: app ? app.emp_nm : "Not Selected" });
+                });
               }
               const hasChecklist = task.checklist && task.checklist.length > 0;
               const hasAttachments = task.attachments && task.attachments.length > 0;
@@ -2997,13 +3012,22 @@ const MilestoneCreation = ({ onLogout, userRole }) => {
                 assigneeName = emp ? (emp.ext_emp_nm || emp.name) : "Not Assigned";
               }
               const assignedTo = [{ role: "Executor", name: assigneeName }];
-              if (task.process?.enabled && task.process?.reviewer_id) {
-                const rev = employees.find(e => String(e.emp_id) === String(task.process.reviewer_id));
-                assignedTo.push({ role: "Reviewer", name: rev ? rev.emp_nm : "Not Selected" });
-              }
-              if (task.process?.enabled && task.process?.approver_id) {
-                const app = employees.find(e => String(e.emp_id) === String(task.process.approver_id));
-                assignedTo.push({ role: "Approver", name: app ? app.emp_nm : "Not Selected" });
+              if (task.process?.enabled) {
+                const revIds = (task.process?.reviewer_ids && task.process.reviewer_ids.length > 0)
+                  ? task.process.reviewer_ids
+                  : (task.process?.reviewer_id ? [task.process.reviewer_id] : []);
+                revIds.forEach((rId, rIdx) => {
+                  const rev = employees.find(e => String(e.emp_id) === String(rId));
+                  assignedTo.push({ role: revIds.length > 1 ? `Reviewer ${rIdx + 1}` : "Reviewer", name: rev ? rev.emp_nm : "Not Selected" });
+                });
+
+                const appIds = (task.process?.approver_ids && task.process.approver_ids.length > 0)
+                  ? task.process.approver_ids
+                  : (task.process?.approver_id ? [task.process.approver_id] : []);
+                appIds.forEach((aId, aIdx) => {
+                  const app = employees.find(e => String(e.emp_id) === String(aId));
+                  assignedTo.push({ role: appIds.length > 1 ? `Approver ${aIdx + 1}` : "Approver", name: app ? app.emp_nm : "Not Selected" });
+                });
               }
               const hasChecklist = task.checklist && task.checklist.length > 0;
               const hasAttachments = task.attachments && task.attachments.length > 0;

@@ -33,7 +33,7 @@ public class EmployeeController {
     @Autowired
     private EmailService emailService;
 
-    @Value("${app.base-url:https://bionova-sandbox.vercel.app}")
+    @Value("${app.base-url:https://bionova-sable.vercel.app}")
     private String websiteUrl;
 
     private void populateDesignation(Employee employee) {

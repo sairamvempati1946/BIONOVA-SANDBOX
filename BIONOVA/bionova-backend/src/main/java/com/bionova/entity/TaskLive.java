@@ -154,6 +154,21 @@ public class TaskLive {
     @Transient
     private java.util.List<TeamMember> teamMembers;
 
+    @Transient
+    private java.util.List<ProcessConfig> processConfigs;
+
+    @Transient
+    private java.util.List<Long> reviewerIds;
+
+    @Transient
+    private java.util.List<Long> approverIds;
+
+    @Transient
+    private java.util.List<String> reviewerNames;
+
+    @Transient
+    private java.util.List<String> approverNames;
+
     public ProcessStatus getProcessStatus() {
         if (subStatus == null || subStatus.isEmpty()) {
             return ProcessStatus.NONE;

@@ -31,6 +31,7 @@ public class ProcessController {
     @Autowired private com.bionova.repository.MilestoneLiveRepository milestoneLiveRepo;
     @Autowired private com.bionova.repository.ReviewerMasterRepository reviewerMasterRepo;
     @Autowired private com.bionova.service.ProjectStatusCascadeService projectStatusCascadeService;
+    @Autowired private com.bionova.service.ExternalTaskAccessService   externalTaskAccessService;
 
     private String getPrerequisitesErrorMessage(TaskLive task) {
         if (task == null) return null;
@@ -444,6 +445,27 @@ public class ProcessController {
 
             if ("NO".equals(decision) && ("Rework".equals(targetSubStatus) || "Reassign".equals(targetSubStatus))) {
                 projectStatusCascadeService.cascadeReworkDownstream(taskId);
+
+                // Send email notification to external employee if task or target task is assigned to an external employee
+                Long reviewerEmpId = body.get("empId") != null ? Long.valueOf(body.get("empId").toString()) : null;
+                if ("Rework".equals(targetSubStatus)) {
+                    TaskLive taskToNotify = targetTask != null ? targetTask : task;
+                    if ("EXTERNAL".equalsIgnoreCase(taskToNotify.getTaskAsgnTo()) && taskToNotify.getExtEmpId() != null) {
+                        try {
+                            externalTaskAccessService.notifyExternalEmployeeRework(taskToNotify.getTaskId(), "Reviewer", reviewerEmpId, eventRemarks);
+                        } catch (Exception ex) {
+                            System.err.println("Failed to send external employee rework email from reviewer: " + ex.getMessage());
+                        }
+                    }
+                } else if ("Reassign".equals(targetSubStatus)) {
+                    if ("EXTERNAL".equalsIgnoreCase(task.getTaskAsgnTo()) && task.getExtEmpId() != null) {
+                        try {
+                            externalTaskAccessService.notifyExternalEmployeeReassign(task.getTaskId(), task.getExtEmpId(), "Reviewer", reviewerEmpId, eventRemarks);
+                        } catch (Exception ex) {
+                            System.err.println("Failed to send external employee reassign email from reviewer: " + ex.getMessage());
+                        }
+                    }
+                }
             }
             projectStatusCascadeService.cascadeStatusFromTask(taskId);
 
@@ -669,6 +691,27 @@ public class ProcessController {
 
             if (TaskStatusMaster.WIP.equals(targetStatus) && ("Rework".equals(targetSubStatus) || "Reassign".equals(targetSubStatus))) {
                 projectStatusCascadeService.cascadeReworkDownstream(taskId);
+
+                // Send email notification to external employee if task or target task is assigned to an external employee
+                Long approverEmpId = body.get("empId") != null ? Long.valueOf(body.get("empId").toString()) : null;
+                if ("Rework".equals(targetSubStatus)) {
+                    TaskLive taskToNotify = targetTask != null ? targetTask : task;
+                    if ("EXTERNAL".equalsIgnoreCase(taskToNotify.getTaskAsgnTo()) && taskToNotify.getExtEmpId() != null) {
+                        try {
+                            externalTaskAccessService.notifyExternalEmployeeRework(taskToNotify.getTaskId(), "Approver", approverEmpId, eventRemarks);
+                        } catch (Exception ex) {
+                            System.err.println("Failed to send external employee rework email from approver: " + ex.getMessage());
+                        }
+                    }
+                } else if ("Reassign".equals(targetSubStatus)) {
+                    if ("EXTERNAL".equalsIgnoreCase(task.getTaskAsgnTo()) && task.getExtEmpId() != null) {
+                        try {
+                            externalTaskAccessService.notifyExternalEmployeeReassign(task.getTaskId(), task.getExtEmpId(), "Approver", approverEmpId, eventRemarks);
+                        } catch (Exception ex) {
+                            System.err.println("Failed to send external employee reassign email from approver: " + ex.getMessage());
+                        }
+                    }
+                }
             }
             projectStatusCascadeService.cascadeStatusFromTask(taskId);
 

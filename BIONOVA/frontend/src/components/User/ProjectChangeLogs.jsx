@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, PlusCircle, Edit3, Trash2, Download, 
   Search, Filter, Eye, X, User, ChevronDown, ChevronUp
@@ -38,6 +38,13 @@ export default function ProjectChangeLogs({ project, progressData }) {
 
   const [dbLogs, setDbLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const detailsRef = useRef(null);
+
+  useEffect(() => {
+    if (selectedRecord && detailsRef.current) {
+      detailsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [selectedRecord]);
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -507,7 +514,24 @@ export default function ProjectChangeLogs({ project, progressData }) {
 
         {/* Right Sidebar Details */}
         {selectedRecord && (
-          <div className="pcl-sidebar" style={{ width: '340px', flexShrink: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', maxHeight: '600px', overflowY: 'auto' }}>
+          <div 
+            ref={detailsRef}
+            className="pcl-sidebar" 
+            style={{ 
+              width: '340px', 
+              flexShrink: 0, 
+              background: 'white', 
+              border: '1px solid #e2e8f0', 
+              borderRadius: '8px', 
+              padding: '16px', 
+              maxHeight: 'calc(100vh - 120px)', 
+              overflowY: 'auto',
+              position: 'sticky',
+              top: '80px',
+              alignSelf: 'flex-start',
+              scrollMarginTop: '90px'
+            }}
+          >
             <div className="pcl-sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: '600', margin: 0 }}>Change Details</h3>
               <button onClick={() => setSelectedRecord(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><X size={18} /></button>

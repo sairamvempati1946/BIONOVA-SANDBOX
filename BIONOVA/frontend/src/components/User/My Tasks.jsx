@@ -255,17 +255,24 @@ const getActionButton = (task, currentUserEmpId, isExternal = false, employeesLi
 
   const rawTask = task.rawTask || task;
   const isExternalTask = isExternal || task.isExternal || rawTask.isExternal;
+  const executorId = rawTask.empId || rawTask.emp_id || rawTask.assignedTo || rawTask.assigned_to || rawTask.extEmpId || rawTask.executorId || task.empId;
 
   // Get user roles
-  const executorId = rawTask.empId || rawTask.assignedTo || rawTask.executorId || rawTask.doerId;
-  const reviewerId = rawTask.reviewerId || rawTask.reviewer || rawTask.reviewerEmpId;
-  const approverId = rawTask.approverId || rawTask.approver || rawTask.approverEmpId;
+  const allReviewerIds = Array.isArray(rawTask.reviewerIds) && rawTask.reviewerIds.length > 0 
+    ? Array.from(new Set(rawTask.reviewerIds.filter(Boolean)))
+    : (rawTask.processConfigs ? Array.from(new Set(rawTask.processConfigs.filter(p => (p.stepType && p.stepType.toUpperCase() === 'REVIEWER') || (p.rId === 1) || (p.stepLabel && p.stepLabel.toLowerCase().includes('reviewer')) || (!p.stepType && p.ordrId === 1)).map(p => p.empId).filter(Boolean))) : (rawTask.reviewerId || rawTask.reviewer || rawTask.reviewerEmpId ? [rawTask.reviewerId || rawTask.reviewer || rawTask.reviewerEmpId] : []));
+  const allApproverIds = Array.isArray(rawTask.approverIds) && rawTask.approverIds.length > 0 
+    ? Array.from(new Set(rawTask.approverIds.filter(Boolean)))
+    : (rawTask.processConfigs ? Array.from(new Set(rawTask.processConfigs.filter(p => (p.stepType && p.stepType.toUpperCase() === 'APPROVER') || (p.rId === 2) || (p.stepLabel && p.stepLabel.toLowerCase().includes('approver')) || (!p.stepType && p.ordrId > 1)).map(p => p.empId).filter(Boolean))) : (rawTask.approverId || rawTask.approver || rawTask.approverEmpId ? [rawTask.approverId || rawTask.approver || rawTask.approverEmpId] : []));
+
+  const reviewerId = allReviewerIds.length > 0 ? allReviewerIds[0] : null;
+  const approverId = allApproverIds.length > 0 ? allApproverIds[0] : null;
 
   const isTeamMember = (Array.isArray(rawTask?.teamMembers) && rawTask.teamMembers.some(tm => String(tm.empId) === String(currentUserEmpId))) || (Array.isArray(task?.teamMembers) && task.teamMembers.some(tm => String(tm.empId) === String(currentUserEmpId)));
   const myName = getEmployeeName(currentUserEmpId, employeesList || []);
-  const isReviewer = !isExternalTask && (String(reviewerId) === String(currentUserEmpId) || (rawTask?.reviewerNm && myName && myName.trim().toLowerCase() === rawTask.reviewerNm.trim().toLowerCase()));
-  const isApprover = !isExternalTask && (String(approverId) === String(currentUserEmpId) || (rawTask?.approverNm && myName && myName.trim().toLowerCase() === rawTask.approverNm.trim().toLowerCase()));
-  const isDoer = isExternalTask || String(executorId) === String(currentUserEmpId) || String(rawTask.assignedBy || rawTask.assigned_by || rawTask.createdBy) === String(currentUserEmpId) || isTeamMember || (!isReviewer && !isApprover);
+  const isReviewer = !isExternalTask && (allReviewerIds.some(id => String(id) === String(currentUserEmpId)) || (rawTask?.reviewerNm && myName && rawTask.reviewerNm.toLowerCase().includes(myName.trim().toLowerCase())));
+  const isApprover = !isExternalTask && (allApproverIds.some(id => String(id) === String(currentUserEmpId)) || (rawTask?.approverNm && myName && rawTask.approverNm.toLowerCase().includes(myName.trim().toLowerCase())));
+  const isDoer = isExternalTask || (executorId && String(executorId) === String(currentUserEmpId)) || (rawTask.assignedBy && String(rawTask.assignedBy) === String(currentUserEmpId)) || (rawTask.assigned_by && String(rawTask.assigned_by) === String(currentUserEmpId)) || (rawTask.createdBy && String(rawTask.createdBy) === String(currentUserEmpId)) || isTeamMember || (!isReviewer && !isApprover);
 
   // Get progress (status)
   const progress = (rawTask.taskSts || rawTask.status || rawTask.taskStatus || task.status || "OPEN").toUpperCase();
@@ -486,6 +493,7 @@ const MyTasks = ({ userRole, onLogout }) => {
 
   const [allProjectTasks, setAllProjectTasks] = useState([]);
   const [taskTeamMembers, setTaskTeamMembers] = useState([]);
+  const [taskProcessConfigs, setTaskProcessConfigs] = useState([]);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [selectedNewMember, setSelectedNewMember] = useState("");
   const [loadingTeamMembers, setLoadingTeamMembers] = useState(false);
@@ -588,6 +596,11 @@ const MyTasks = ({ userRole, onLogout }) => {
         setTaskAttachments(atts);
         setUpdateRemarks(data.addlRem || "");
         setUpdateProgressVal(calculatedProgress);
+        if (Array.isArray(data.processConfigs) && data.processConfigs.length > 0) {
+          setTaskProcessConfigs(data.processConfigs);
+        } else {
+          setTaskProcessConfigs([]);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch external task", e);
@@ -2587,6 +2600,29 @@ const MyTasks = ({ userRole, onLogout }) => {
       setLoadingTeamMembers(false);
     }
 
+    // Load Process Configs (All Reviewers and Approvers)
+    setTaskProcessConfigs([]);
+    try {
+      const rawT = task.rawTask || task;
+      const tId = task.taskId || task.id || rawT.taskId || rawT.empTaskId || rawT.id;
+      const isInd = task.isIndividual || rawT.taskSource === "INDIVIDUAL" || rawT.entityTyp === "INDIVIDUAL_TASK";
+      const pcPath = isInd
+        ? `/api/process-config/assignments/${tId}`
+        : `/api/process-config/live-task/${tId}`;
+      const pcs = await apiGet(pcPath);
+      if (Array.isArray(pcs) && pcs.length > 0) {
+        setTaskProcessConfigs(pcs);
+      } else if (Array.isArray(rawT.processConfigs) && rawT.processConfigs.length > 0) {
+        setTaskProcessConfigs(rawT.processConfigs);
+      }
+    } catch (err) {
+      console.error("Failed to load process configs:", err);
+      const rawT = task.rawTask || task;
+      if (Array.isArray(rawT.processConfigs)) {
+        setTaskProcessConfigs(rawT.processConfigs);
+      }
+    }
+
     setShowDetailView(true);
   };
 
@@ -2991,8 +3027,16 @@ const MyTasks = ({ userRole, onLogout }) => {
     })();
     const isTeamMember = taskTeamMembers.some(tm => String(tm.empId) === String(currentUserEmpId)) || (Array.isArray(rawTask?.teamMembers) && rawTask.teamMembers.some(tm => String(tm.empId) === String(currentUserEmpId)));
     const myName = getEmployeeName(currentUserEmpId, employeesList);
-    const isReviewer = !isExternalMode && (String(rawTask.reviewerId || rawTask.reviewer) === String(currentUserEmpId) || (rawTask?.reviewerNm && myName && myName.trim().toLowerCase() === rawTask.reviewerNm.trim().toLowerCase()));
-    const isApprover = !isExternalMode && (String(rawTask.approverId || rawTask.approver) === String(currentUserEmpId) || (rawTask?.approverNm && myName && myName.trim().toLowerCase() === rawTask.approverNm.trim().toLowerCase()));
+
+    const allTaskRevIds = (taskProcessConfigs && taskProcessConfigs.length > 0)
+      ? Array.from(new Set(taskProcessConfigs.filter(p => (p.stepType && p.stepType.toUpperCase() === 'REVIEWER') || (p.rId === 1) || (p.stepLabel && p.stepLabel.toLowerCase().includes('reviewer')) || (!p.stepType && p.ordrId === 1)).map(p => p.empId).filter(Boolean)))
+      : (Array.isArray(rawTask.reviewerIds) && rawTask.reviewerIds.length > 0 ? Array.from(new Set(rawTask.reviewerIds.filter(Boolean))) : (rawTask.processConfigs ? Array.from(new Set(rawTask.processConfigs.filter(p => (p.stepType && p.stepType.toUpperCase() === 'REVIEWER') || (p.rId === 1) || (p.stepLabel && p.stepLabel.toLowerCase().includes('reviewer')) || (!p.stepType && p.ordrId === 1)).map(p => p.empId).filter(Boolean))) : (rawTask.reviewerId || rawTask.reviewer ? [rawTask.reviewerId || rawTask.reviewer] : [])));
+    const allTaskAppIds = (taskProcessConfigs && taskProcessConfigs.length > 0)
+      ? Array.from(new Set(taskProcessConfigs.filter(p => (p.stepType && p.stepType.toUpperCase() === 'APPROVER') || (p.rId === 2) || (p.stepLabel && p.stepLabel.toLowerCase().includes('approver')) || (!p.stepType && p.ordrId > 1)).map(p => p.empId).filter(Boolean)))
+      : (Array.isArray(rawTask.approverIds) && rawTask.approverIds.length > 0 ? Array.from(new Set(rawTask.approverIds.filter(Boolean))) : (rawTask.processConfigs ? Array.from(new Set(rawTask.processConfigs.filter(p => (p.stepType && p.stepType.toUpperCase() === 'APPROVER') || (p.rId === 2) || (p.stepLabel && p.stepLabel.toLowerCase().includes('approver')) || (!p.stepType && p.ordrId > 1)).map(p => p.empId).filter(Boolean))) : (rawTask.approverId || rawTask.approver ? [rawTask.approverId || rawTask.approver] : [])));
+
+    const isReviewer = !isExternalMode && (allTaskRevIds.some(id => String(id) === String(currentUserEmpId)) || (rawTask?.reviewerNm && myName && rawTask.reviewerNm.toLowerCase().includes(myName.trim().toLowerCase())));
+    const isApprover = !isExternalMode && (allTaskAppIds.some(id => String(id) === String(currentUserEmpId)) || (rawTask?.approverNm && myName && rawTask.approverNm.toLowerCase().includes(myName.trim().toLowerCase())));
     const isDoer = isExternalMode || String(rawTask.empId || rawTask.assignedTo || rawTask.extEmpId) === String(currentUserEmpId) || String(rawTask.assignedBy || rawTask.assigned_by || rawTask.createdBy) === String(currentUserEmpId) || isTeamMember || (!isReviewer && !isApprover);
 
     // Get current progress and process for display
@@ -4451,8 +4495,100 @@ const MyTasks = ({ userRole, onLogout }) => {
                     isExtTask
                   );
                 })()}
-                {(rawTask?.reviewerId || rawTask?.reviewer || rawTask?.reviewerNm) && renderTeamMember(rawTask?.reviewerId || rawTask?.reviewer, "Reviewer", "RV", rawTask?.reviewerNm)}
-                {(rawTask?.approverId || rawTask?.approver || rawTask?.approverNm) && renderTeamMember(rawTask?.approverId || rawTask?.approver, "Approver", "AP", rawTask?.approverNm)}
+                {(() => {
+                  const pcs = (taskProcessConfigs && taskProcessConfigs.length > 0)
+                    ? taskProcessConfigs
+                    : (Array.isArray(rawTask?.processConfigs) ? rawTask.processConfigs : []);
+
+                  const seenRevEmpIds = new Set();
+                  const revConfigs = [];
+                  const seenAppEmpIds = new Set();
+                  const appConfigs = [];
+
+                  pcs.forEach(p => {
+                    const isRev = (p.stepType && p.stepType.toUpperCase() === 'REVIEWER') || 
+                                  (p.rId === 1) || 
+                                  (p.stepLabel && p.stepLabel.toLowerCase().includes('reviewer')) || 
+                                  (!p.stepType && p.ordrId === 1);
+                    const isApp = (p.stepType && p.stepType.toUpperCase() === 'APPROVER') || 
+                                  (p.rId === 2) || 
+                                  (p.stepLabel && p.stepLabel.toLowerCase().includes('approver')) || 
+                                  (!p.stepType && p.ordrId > 1);
+
+                    if (isRev && p.empId) {
+                      const idKey = String(p.empId);
+                      if (!seenRevEmpIds.has(idKey)) {
+                        seenRevEmpIds.add(idKey);
+                        revConfigs.push(p);
+                      }
+                    } else if (isApp && p.empId) {
+                      const idKey = String(p.empId);
+                      if (!seenAppEmpIds.has(idKey)) {
+                        seenAppEmpIds.add(idKey);
+                        appConfigs.push(p);
+                      }
+                    }
+                  });
+
+                  let revIds = revConfigs.map(r => r.empId);
+                  if (revIds.length === 0) {
+                    if (Array.isArray(rawTask?.reviewerIds) && rawTask.reviewerIds.length > 0) {
+                      revIds = Array.from(new Set(rawTask.reviewerIds.filter(Boolean)));
+                    } else if (rawTask?.reviewerId || rawTask?.reviewer || rawTask?.reviewerEmpId) {
+                      revIds = [rawTask.reviewerId || rawTask.reviewer || rawTask.reviewerEmpId].filter(Boolean);
+                    }
+                  }
+
+                  let appIds = appConfigs.map(a => a.empId);
+                  if (appIds.length === 0) {
+                    if (Array.isArray(rawTask?.approverIds) && rawTask.approverIds.length > 0) {
+                      appIds = Array.from(new Set(rawTask.approverIds.filter(Boolean)));
+                    } else if (rawTask?.approverId || rawTask?.approver || rawTask?.approverEmpId) {
+                      appIds = [rawTask.approverId || rawTask.approver || rawTask.approverEmpId].filter(Boolean);
+                    }
+                  }
+
+                  const revFallbackNames = (revConfigs.length > 0)
+                    ? revConfigs.map(r => r.empNm || r.empName)
+                    : (Array.isArray(rawTask?.reviewerNames) && rawTask.reviewerNames.length > 0 ? Array.from(new Set(rawTask.reviewerNames.filter(Boolean))) : (rawTask?.reviewerNm ? Array.from(new Set(rawTask.reviewerNm.split(',').map(s => s.trim()).filter(Boolean))) : []));
+                  const appFallbackNames = (appConfigs.length > 0)
+                    ? appConfigs.map(a => a.empNm || a.empName)
+                    : (Array.isArray(rawTask?.approverNames) && rawTask.approverNames.length > 0 ? Array.from(new Set(rawTask.approverNames.filter(Boolean))) : (rawTask?.approverNm ? Array.from(new Set(rawTask.approverNm.split(',').map(s => s.trim()).filter(Boolean))) : []));
+
+                  return (
+                    <>
+                      {revIds.length > 0 ? (
+                        revIds.map((rId, idx) => (
+                          <React.Fragment key={`detail-rev-${rId}-${idx}`}>
+                            {renderTeamMember(
+                              rId,
+                              revIds.length > 1 ? `Reviewer ${idx + 1}` : "Reviewer",
+                              "RV",
+                              revFallbackNames[idx] || (idx === 0 ? rawTask?.reviewerNm : null)
+                            )}
+                          </React.Fragment>
+                        ))
+                      ) : (
+                        rawTask?.reviewerNm && renderTeamMember(null, "Reviewer", "RV", rawTask?.reviewerNm)
+                      )}
+
+                      {appIds.length > 0 ? (
+                        appIds.map((aId, idx) => (
+                          <React.Fragment key={`detail-app-${aId}-${idx}`}>
+                            {renderTeamMember(
+                              aId,
+                              appIds.length > 1 ? `Approver ${idx + 1}` : "Approver",
+                              "AP",
+                              appFallbackNames[idx] || (idx === 0 ? rawTask?.approverNm : null)
+                            )}
+                          </React.Fragment>
+                        ))
+                      ) : (
+                        rawTask?.approverNm && renderTeamMember(null, "Approver", "AP", rawTask?.approverNm)
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -4935,9 +5071,63 @@ const MyTasks = ({ userRole, onLogout }) => {
 
     const isExtTask = rawTask?.taskAsgnTo === 'EXTERNAL' || !!rawTask?.extEmpId || task.isExternal || rawTask?.isExternal;
     const executorId = isExtTask ? null : (rawTask.empId || rawTask.assignedTo || rawTask.executorId);
-    const reviewerId = rawTask.reviewerId || rawTask.reviewer;
-    const approverId = rawTask.approverId || rawTask.approver;
     const assignedById = rawTask.assignedBy || rawTask.assigned_by || rawTask.createdBy;
+    const pcs = Array.isArray(rawTask.processConfigs) ? rawTask.processConfigs : [];
+
+    const seenRevEmpIds = new Set();
+    const revConfigs = [];
+    const seenAppEmpIds = new Set();
+    const appConfigs = [];
+
+    pcs.forEach(p => {
+      const isRev = (p.stepType && p.stepType.toUpperCase() === 'REVIEWER') || 
+                    (p.rId === 1) || 
+                    (p.stepLabel && p.stepLabel.toLowerCase().includes('reviewer')) || 
+                    (!p.stepType && p.ordrId === 1);
+      const isApp = (p.stepType && p.stepType.toUpperCase() === 'APPROVER') || 
+                    (p.rId === 2) || 
+                    (p.stepLabel && p.stepLabel.toLowerCase().includes('approver')) || 
+                    (!p.stepType && p.ordrId > 1);
+
+      if (isRev && p.empId) {
+        const idKey = String(p.empId);
+        if (!seenRevEmpIds.has(idKey)) {
+          seenRevEmpIds.add(idKey);
+          revConfigs.push(p);
+        }
+      } else if (isApp && p.empId) {
+        const idKey = String(p.empId);
+        if (!seenAppEmpIds.has(idKey)) {
+          seenAppEmpIds.add(idKey);
+          appConfigs.push(p);
+        }
+      }
+    });
+
+    let revIds = revConfigs.map(r => r.empId);
+    if (revIds.length === 0) {
+      if (Array.isArray(rawTask.reviewerIds) && rawTask.reviewerIds.length > 0) {
+        revIds = Array.from(new Set(rawTask.reviewerIds.filter(Boolean)));
+      } else if (rawTask.reviewerId || rawTask.reviewer || rawTask.reviewerEmpId) {
+        revIds = [rawTask.reviewerId || rawTask.reviewer || rawTask.reviewerEmpId].filter(Boolean);
+      }
+    }
+
+    let appIds = appConfigs.map(a => a.empId);
+    if (appIds.length === 0) {
+      if (Array.isArray(rawTask.approverIds) && rawTask.approverIds.length > 0) {
+        appIds = Array.from(new Set(rawTask.approverIds.filter(Boolean)));
+      } else if (rawTask.approverId || rawTask.approver || rawTask.approverEmpId) {
+        appIds = [rawTask.approverId || rawTask.approver || rawTask.approverEmpId].filter(Boolean);
+      }
+    }
+
+    const revFallbackNames = (revConfigs.length > 0)
+      ? revConfigs.map(r => r.empNm || r.empName)
+      : (Array.isArray(rawTask.reviewerNames) && rawTask.reviewerNames.length > 0 ? Array.from(new Set(rawTask.reviewerNames.filter(Boolean))) : (rawTask.reviewerNm ? Array.from(new Set(rawTask.reviewerNm.split(',').map(s => s.trim()).filter(Boolean))) : []));
+    const appFallbackNames = (appConfigs.length > 0)
+      ? appConfigs.map(a => a.empNm || a.empName)
+      : (Array.isArray(rawTask.approverNames) && rawTask.approverNames.length > 0 ? Array.from(new Set(rawTask.approverNames.filter(Boolean))) : (rawTask.approverNm ? Array.from(new Set(rawTask.approverNm.split(',').map(s => s.trim()).filter(Boolean))) : []));
 
     let teamMembers = [
       ...((task.isIndividual || rawTask.taskSource === "INDIVIDUAL" || (!task.isProject && !rawTask.mId && !rawTask.prjId && !rawTask.mlstnCd && !rawTask.prjCd && assignedById)) && (assignedById || rawTask.assignedByNm) ? [{
@@ -4953,22 +5143,59 @@ const MyTasks = ({ userRole, onLogout }) => {
         label: "EX",
         fallbackName: rawTask.extEmpNm || rawTask.executorName || rawTask.empNm || rawTask.empName || rawTask.assignedToName || rawTask.executorNm,
         fallbackPhoto: rawTask.executorPhoto || rawTask.empPhoto
-      },
-      {
-        empId: reviewerId,
+      }
+    ];
+
+    if (revIds.length > 0) {
+      revIds.forEach((rId, idx) => {
+        teamMembers.push({
+          empId: rId,
+          role: revIds.length > 1 ? `Reviewer ${idx + 1}` : "Reviewer",
+          label: "RV",
+          fallbackName: revFallbackNames[idx] || (idx === 0 ? rawTask.reviewerNm : null),
+          fallbackPhoto: rawTask.reviewerPhoto || rawTask.revPhoto
+        });
+      });
+    } else if (rawTask.reviewerNm) {
+      teamMembers.push({
+        empId: null,
         role: "Reviewer",
         label: "RV",
-        fallbackName: rawTask.reviewerName || rawTask.reviewerNm || rawTask.revNm || rawTask.revName,
-        fallbackPhoto: rawTask.reviewerPhoto || rawTask.revPhoto
-      },
-      {
-        empId: approverId,
+        fallbackName: rawTask.reviewerNm,
+        fallbackPhoto: null
+      });
+    }
+
+    if (appIds.length > 0) {
+      appIds.forEach((aId, idx) => {
+        teamMembers.push({
+          empId: aId,
+          role: appIds.length > 1 ? `Approver ${idx + 1}` : "Approver",
+          label: "AP",
+          fallbackName: appFallbackNames[idx] || (idx === 0 ? rawTask.approverNm : null),
+          fallbackPhoto: rawTask.approverPhoto || rawTask.appPhoto
+        });
+      });
+    } else if (rawTask.approverNm) {
+      teamMembers.push({
+        empId: null,
         role: "Approver",
         label: "AP",
-        fallbackName: rawTask.approverName || rawTask.approverNm || rawTask.appNm || rawTask.appName,
-        fallbackPhoto: rawTask.approverPhoto || rawTask.appPhoto
-      }
-    ].filter(m => m.empId || m.fallbackName);
+        fallbackName: rawTask.approverNm,
+        fallbackPhoto: null
+      });
+    }
+
+    teamMembers = teamMembers.filter(m => m.empId || m.fallbackName);
+
+    // Strict deduplication of teamMembers by empId + role
+    const seenMemberKeys = new Set();
+    teamMembers = teamMembers.filter(m => {
+      const key = `${m.empId || m.fallbackName}_${m.label}`;
+      if (seenMemberKeys.has(key)) return false;
+      seenMemberKeys.add(key);
+      return true;
+    });
 
     if (Array.isArray(rawTask.teamMembers) && rawTask.teamMembers.length > 0) {
       rawTask.teamMembers.forEach(tm => {

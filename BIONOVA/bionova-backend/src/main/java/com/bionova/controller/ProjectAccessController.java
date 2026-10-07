@@ -32,6 +32,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @RestController
+@CrossOrigin
 public class ProjectAccessController {
 
     @Autowired

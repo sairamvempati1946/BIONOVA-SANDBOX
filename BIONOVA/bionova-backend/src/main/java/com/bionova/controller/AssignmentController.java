@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 @RestController
 @RequestMapping("/api/assignments")
 public class AssignmentController {
@@ -85,23 +86,61 @@ public class AssignmentController {
         }
 
         List<com.bionova.entity.ProcessConfig> configs = processConfigRepo.findByEmpTaskIdOrderByOrdrIdAsc(task.getEmpTaskId());
+        java.util.List<com.bionova.entity.ProcessConfig> uniqueConfigs = new java.util.ArrayList<>();
+        java.util.Set<Long> seenPcEmp = new java.util.HashSet<>();
         for (com.bionova.entity.ProcessConfig pc : configs) {
-            if (pc.getOrdrId() == 1) {
-                task.setReviewer(pc.getEmpId());
-                if (pc.getEmpId() != null) {
+            if (pc.getEmpId() != null && seenPcEmp.add(pc.getEmpId())) {
+                uniqueConfigs.add(pc);
+            } else if (pc.getEmpId() == null) {
+                uniqueConfigs.add(pc);
+            }
+        }
+        task.setProcessConfigs(uniqueConfigs);
+
+        java.util.List<Long> revIds = new java.util.ArrayList<>();
+        java.util.List<String> revNames = new java.util.ArrayList<>();
+        java.util.List<Long> appIds = new java.util.ArrayList<>();
+        java.util.List<String> appNames = new java.util.ArrayList<>();
+
+        java.util.Set<Long> seenRev = new java.util.HashSet<>();
+        java.util.Set<Long> seenApp = new java.util.HashSet<>();
+
+        for (com.bionova.entity.ProcessConfig pc : configs) {
+            boolean isRev = "REVIEWER".equalsIgnoreCase(pc.getStepType()) || (pc.getRId() != null && pc.getRId() == 1);
+            boolean isApp = "APPROVER".equalsIgnoreCase(pc.getStepType()) || (pc.getRId() != null && pc.getRId() == 2);
+            if (!isRev && !isApp) {
+                isRev = (pc.getOrdrId() != null && pc.getOrdrId() == 1);
+                isApp = (pc.getOrdrId() != null && pc.getOrdrId() > 1);
+            }
+
+            if (isRev && pc.getEmpId() != null) {
+                if (seenRev.add(pc.getEmpId())) {
+                    revIds.add(pc.getEmpId());
                     employeeRepository.findById(pc.getEmpId()).ifPresent(emp -> {
-                        task.setReviewerNm(emp.getFirstName() + " " + emp.getLastName());
+                        String lastName = emp.getLastName() != null ? emp.getLastName() : "";
+                        revNames.add((emp.getFirstName() + " " + lastName).trim());
                     });
                 }
-            } else if (pc.getOrdrId() == 2) {
-                task.setApprover(pc.getEmpId());
-                if (pc.getEmpId() != null) {
+            } else if (isApp && pc.getEmpId() != null) {
+                if (seenApp.add(pc.getEmpId())) {
+                    appIds.add(pc.getEmpId());
                     employeeRepository.findById(pc.getEmpId()).ifPresent(emp -> {
-                        task.setApproverNm(emp.getFirstName() + " " + emp.getLastName());
+                        String lastName = emp.getLastName() != null ? emp.getLastName() : "";
+                        appNames.add((emp.getFirstName() + " " + lastName).trim());
                     });
                 }
             }
         }
+
+        task.setReviewer(revIds.isEmpty() ? null : revIds.get(0));
+        task.setReviewerNm(revNames.isEmpty() ? null : String.join(", ", revNames));
+        task.setApprover(appIds.isEmpty() ? null : appIds.get(0));
+        task.setApproverNm(appNames.isEmpty() ? null : String.join(", ", appNames));
+        task.setReviewerIds(revIds);
+        task.setApproverIds(appIds);
+        task.setReviewerNames(revNames);
+        task.setApproverNames(appNames);
+
         if (task.getEmpTaskId() != null) {
             task.setTeamMembers(teamMemberRepository.findByEmpTaskId(task.getEmpTaskId()));
             java.util.List<com.bionova.entity.AttachmentMaster> atts = attachmentRepo.findByAssignmentTaskId(task.getEmpTaskId());
@@ -201,19 +240,56 @@ public class AssignmentController {
             }
 
             java.util.List<com.bionova.entity.ProcessConfig> configs = configMap.getOrDefault(task.getEmpTaskId(), java.util.Collections.emptyList());
+            java.util.List<com.bionova.entity.ProcessConfig> uniqueConfigs = new java.util.ArrayList<>();
+            java.util.Set<Long> seenPcEmp = new java.util.HashSet<>();
             for (com.bionova.entity.ProcessConfig pc : configs) {
-                if (pc.getOrdrId() == 1) {
-                    task.setReviewer(pc.getEmpId());
-                    if (pc.getEmpId() != null) {
-                        task.setReviewerNm(empNameMap.get(pc.getEmpId()));
+                if (pc.getEmpId() != null && seenPcEmp.add(pc.getEmpId())) {
+                    uniqueConfigs.add(pc);
+                } else if (pc.getEmpId() == null) {
+                    uniqueConfigs.add(pc);
+                }
+            }
+            task.setProcessConfigs(uniqueConfigs);
+
+            java.util.List<Long> revIds = new java.util.ArrayList<>();
+            java.util.List<String> revNames = new java.util.ArrayList<>();
+            java.util.List<Long> appIds = new java.util.ArrayList<>();
+            java.util.List<String> appNames = new java.util.ArrayList<>();
+
+            java.util.Set<Long> seenRev = new java.util.HashSet<>();
+            java.util.Set<Long> seenApp = new java.util.HashSet<>();
+
+            for (com.bionova.entity.ProcessConfig pc : configs) {
+                boolean isRev = "REVIEWER".equalsIgnoreCase(pc.getStepType()) || (pc.getRId() != null && pc.getRId() == 1);
+                boolean isApp = "APPROVER".equalsIgnoreCase(pc.getStepType()) || (pc.getRId() != null && pc.getRId() == 2);
+                if (!isRev && !isApp) {
+                    isRev = (pc.getOrdrId() != null && pc.getOrdrId() == 1);
+                    isApp = (pc.getOrdrId() != null && pc.getOrdrId() > 1);
+                }
+
+                if (isRev && pc.getEmpId() != null) {
+                    if (seenRev.add(pc.getEmpId())) {
+                        revIds.add(pc.getEmpId());
+                        String name = empNameMap.get(pc.getEmpId());
+                        if (name != null && !name.isBlank()) revNames.add(name);
                     }
-                } else if (pc.getOrdrId() == 2) {
-                    task.setApprover(pc.getEmpId());
-                    if (pc.getEmpId() != null) {
-                        task.setApproverNm(empNameMap.get(pc.getEmpId()));
+                } else if (isApp && pc.getEmpId() != null) {
+                    if (seenApp.add(pc.getEmpId())) {
+                        appIds.add(pc.getEmpId());
+                        String name = empNameMap.get(pc.getEmpId());
+                        if (name != null && !name.isBlank()) appNames.add(name);
                     }
                 }
             }
+
+            task.setReviewer(revIds.isEmpty() ? null : revIds.get(0));
+            task.setReviewerNm(revNames.isEmpty() ? null : String.join(", ", revNames));
+            task.setApprover(appIds.isEmpty() ? null : appIds.get(0));
+            task.setApproverNm(appNames.isEmpty() ? null : String.join(", ", appNames));
+            task.setReviewerIds(revIds);
+            task.setApproverIds(appIds);
+            task.setReviewerNames(revNames);
+            task.setApproverNames(appNames);
         }
     }
 

@@ -107,4 +107,19 @@ public class Assignment {
 
     @Transient
     private Integer checklistCount = 0;
+
+    @Transient
+    private java.util.List<ProcessConfig> processConfigs;
+
+    @Transient
+    private java.util.List<Long> reviewerIds;
+
+    @Transient
+    private java.util.List<Long> approverIds;
+
+    @Transient
+    private java.util.List<String> reviewerNames;
+
+    @Transient
+    private java.util.List<String> approverNames;
 }

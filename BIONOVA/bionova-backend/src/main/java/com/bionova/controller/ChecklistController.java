@@ -30,6 +30,7 @@ import java.util.Map;
  *   PUT    /api/checklists/{chkId}                  → update item (draft only)
  *   DELETE /api/checklists/{chkId}                  → delete item
  */
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 @RestController
 @RequestMapping("/api/checklists")
 public class ChecklistController {

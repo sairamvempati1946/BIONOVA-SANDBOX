@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api")
 public class DepartmentController {
@@ -21,15 +23,35 @@ public class DepartmentController {
     }
 
     @PostMapping("/departments")
-    public ResponseEntity<DepartmentMaster> saveDepartment(@RequestBody DepartmentMaster department) {
+    public ResponseEntity<?> saveDepartment(@RequestBody DepartmentMaster department) {
+        if (department.getDeptCode() != null && !department.getDeptCode().trim().isEmpty()) {
+            if (departmentRepository.existsByDeptCodeIgnoreCase(department.getDeptCode().trim())) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Department code already exists."));
+            }
+        }
+        if (department.getDeptNm() != null && !department.getDeptNm().trim().isEmpty()) {
+            if (departmentRepository.existsByDeptNmIgnoreCase(department.getDeptNm().trim())) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Department name already exists."));
+            }
+        }
         DepartmentMaster saved = departmentRepository.save(department);
         return ResponseEntity.ok(saved);
     }
 
     @PutMapping("/departments/{id}")
-    public ResponseEntity<DepartmentMaster> updateDepartment(@PathVariable Long id, @RequestBody DepartmentMaster details) {
+    public ResponseEntity<?> updateDepartment(@PathVariable Long id, @RequestBody DepartmentMaster details) {
         DepartmentMaster dept = departmentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Department not found"));
+        if (details.getDeptCode() != null && !details.getDeptCode().trim().isEmpty()) {
+            if (departmentRepository.existsByDeptCodeIgnoreCaseAndDeptIdNot(details.getDeptCode().trim(), id)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Department code already exists."));
+            }
+        }
+        if (details.getDeptNm() != null && !details.getDeptNm().trim().isEmpty()) {
+            if (departmentRepository.existsByDeptNmIgnoreCaseAndDeptIdNot(details.getDeptNm().trim(), id)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Department name already exists."));
+            }
+        }
         dept.setDeptNm(details.getDeptNm());
         dept.setDeptCode(details.getDeptCode());
         dept.setDescr(details.getDescr());

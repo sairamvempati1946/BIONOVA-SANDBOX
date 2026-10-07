@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 @RestController
 @RequestMapping("/api/process-config")
 public class ProcessConfigController {
@@ -32,18 +33,52 @@ public class ProcessConfigController {
     @Autowired
     private AppNotificationRepository appNotificationRepo;
 
-    private Integer getRoleIdForOrder(Integer ordrId) {
-        String roleName = (ordrId != null && ordrId == 1) ? "Reviewer" : "Approver";
+    private Integer getRoleIdForConfig(ProcessConfig config) {
+        String roleName = "Approver";
+        if (config != null) {
+            String type = config.getStepType();
+            String label = config.getStepLabel();
+            if ("REVIEWER".equalsIgnoreCase(type) || (label != null && label.toLowerCase().contains("reviewer"))) {
+                roleName = "Reviewer";
+            } else if ("APPROVER".equalsIgnoreCase(type) || (label != null && label.toLowerCase().contains("approver"))) {
+                roleName = "Approver";
+            } else if (config.getOrdrId() != null && config.getOrdrId() == 1) {
+                roleName = "Reviewer";
+            }
+        }
+        final String targetRole = roleName;
         return reviewerMasterRepo.findAll().stream()
-                .filter(r -> roleName.equalsIgnoreCase(r.getRNm()))
+                .filter(r -> targetRole.equalsIgnoreCase(r.getRNm()))
                 .findFirst()
                 .map(com.bionova.entity.ReviewerMaster::getRId)
                 .orElseGet(() -> {
                     com.bionova.entity.ReviewerMaster rm = new com.bionova.entity.ReviewerMaster();
-                    rm.setRNm(roleName);
+                    rm.setRNm(targetRole);
                     rm = reviewerMasterRepo.save(rm);
                     return rm.getRId();
                 });
+    }
+
+    private void enrichProcessConfigs(List<ProcessConfig> configs) {
+        if (configs == null || configs.isEmpty()) return;
+        Map<Integer, String> roleMap = reviewerMasterRepo.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        com.bionova.entity.ReviewerMaster::getRId,
+                        com.bionova.entity.ReviewerMaster::getRNm,
+                        (v1, v2) -> v1
+                ));
+        for (ProcessConfig pc : configs) {
+            if (pc.getRId() != null && roleMap.containsKey(pc.getRId())) {
+                String rNm = roleMap.get(pc.getRId());
+                if ("Reviewer".equalsIgnoreCase(rNm)) {
+                    pc.setStepType("REVIEWER");
+                    pc.setStepLabel("Reviewer");
+                } else if ("Approver".equalsIgnoreCase(rNm)) {
+                    pc.setStepType("APPROVER");
+                    pc.setStepLabel("Approver");
+                }
+            }
+        }
     }
 
     // ── GET single ─────────────────────────────────────────────────────────
@@ -51,7 +86,10 @@ public class ProcessConfigController {
     @GetMapping("/{pcId}")
     public ResponseEntity<ProcessConfig> getById(@PathVariable Integer pcId) {
         return processConfigRepo.findById(pcId)
-                .map(ResponseEntity::ok)
+                .map(pc -> {
+                    enrichProcessConfigs(List.of(pc));
+                    return ResponseEntity.ok(pc);
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -60,7 +98,9 @@ public class ProcessConfigController {
     /** Get all process steps defined for a Draft Task */
     @GetMapping("/draft-task/{drftTaskId}")
     public List<ProcessConfig> getDraftSteps(@PathVariable Long drftTaskId) {
-        return processConfigRepo.findByTaskIdAndIsLiveOrderByOrdrIdAsc(drftTaskId, false);
+        List<ProcessConfig> configs = processConfigRepo.findByTaskIdAndIsLiveOrderByOrdrIdAsc(drftTaskId, false);
+        enrichProcessConfigs(configs);
+        return configs;
     }
 
     /**
@@ -77,8 +117,8 @@ public class ProcessConfigController {
                     .body(Map.of("message", "empId must be provided to assign an employee."));
         }
 
-        // Set rId automatically based on ordrId
-        config.setRId(getRoleIdForOrder(config.getOrdrId()));
+        // Set rId automatically based on config (stepType / stepLabel / ordrId)
+        config.setRId(getRoleIdForConfig(config));
 
         // Prevent duplicate step order for same task
         if (config.getOrdrId() != null &&
@@ -91,6 +131,7 @@ public class ProcessConfigController {
         config.setIsLive(false);
 
         ProcessConfig saved = processConfigRepo.save(config);
+        enrichProcessConfigs(List.of(saved));
         return ResponseEntity.ok(saved);
     }
 
@@ -111,14 +152,17 @@ public class ProcessConfigController {
         for (ProcessConfig config : configs) {
             if (config.getEmpId() == null && config.getExtEmpId() == null) continue;
             config.setPcId(null);
-            config.setRId(getRoleIdForOrder(config.getOrdrId()));
+            config.setRId(getRoleIdForConfig(config));
             config.setEmpTaskId(empTaskId);
             config.setTaskId(null);
             config.setIsLive(false);
             ProcessConfig s = processConfigRepo.save(config);
+            s.setStepType(config.getStepType());
+            s.setStepLabel(config.getStepLabel());
             sendAssignmentNotification(s);
             saved.add(s);
         }
+        enrichProcessConfigs(saved);
         return ResponseEntity.ok(saved);
     }
 
@@ -147,18 +191,24 @@ public class ProcessConfigController {
             target.setExtEmpId(config.getExtEmpId());
             target.setStepType(config.getStepType());
             target.setStepLabel(config.getStepLabel());
-            target.setRId(getRoleIdForOrder(target.getOrdrId()));
+            target.setRId(getRoleIdForConfig(config));
             ProcessConfig saved = processConfigRepo.save(target);
+            saved.setStepType(config.getStepType());
+            saved.setStepLabel(config.getStepLabel());
             sendAssignmentNotification(saved);
+            enrichProcessConfigs(List.of(saved));
             return ResponseEntity.ok(saved);
         } else {
-            config.setRId(getRoleIdForOrder(config.getOrdrId()));
+            config.setRId(getRoleIdForConfig(config));
             config.setEmpTaskId(empTaskId);
             config.setTaskId(null); 
             config.setIsLive(false); // Does not matter as it uses empTaskId
 
             ProcessConfig saved = processConfigRepo.save(config);
+            saved.setStepType(config.getStepType());
+            saved.setStepLabel(config.getStepLabel());
             sendAssignmentNotification(saved);
+            enrichProcessConfigs(List.of(saved));
             return ResponseEntity.ok(saved);
         }
     }
@@ -171,7 +221,9 @@ public class ProcessConfigController {
 
     @GetMapping({"/assignments/{empTaskId}", "/individual-task/{empTaskId}"})
     public List<ProcessConfig> getIndividualTaskSteps(@PathVariable Long empTaskId) {
-        return processConfigRepo.findByEmpTaskIdOrderByOrdrIdAsc(empTaskId);
+        List<ProcessConfig> configs = processConfigRepo.findByEmpTaskIdOrderByOrdrIdAsc(empTaskId);
+        enrichProcessConfigs(configs);
+        return configs;
     }
 
     // ── LIVE TASK Process Config (read-only — cloned during promotion) ──────
@@ -179,7 +231,9 @@ public class ProcessConfigController {
     /** Get all process steps for a Live Task (cloned from draft during promotion) */
     @GetMapping("/live-task/{taskId}")
     public List<ProcessConfig> getLiveSteps(@PathVariable Long taskId) {
-        return processConfigRepo.findByTaskIdAndIsLiveOrderByOrdrIdAsc(taskId, true);
+        List<ProcessConfig> configs = processConfigRepo.findByTaskIdAndIsLiveOrderByOrdrIdAsc(taskId, true);
+        enrichProcessConfigs(configs);
+        return configs;
     }
 
     // ── UPDATE (draft step editing) ─────────────────────────────────────────
@@ -201,10 +255,15 @@ public class ProcessConfigController {
 
         config.setOrdrId(details.getOrdrId());
         config.setEmpId(details.getEmpId());
-        config.setRId(getRoleIdForOrder(details.getOrdrId()));
+        config.setStepType(details.getStepType());
+        config.setStepLabel(details.getStepLabel());
+        config.setRId(getRoleIdForConfig(details));
 
         ProcessConfig saved = processConfigRepo.save(config);
+        saved.setStepType(details.getStepType());
+        saved.setStepLabel(details.getStepLabel());
         sendAssignmentNotification(saved);
+        enrichProcessConfigs(List.of(saved));
         return ResponseEntity.ok(saved);
     }
 
@@ -220,7 +279,7 @@ public class ProcessConfigController {
         if (config.getEmpId() == null) {
             return;
         }
-        String role = (config.getOrdrId() != null && config.getOrdrId() == 1) ? "Reviewer" : "Approver";
+        String role = "REVIEWER".equalsIgnoreCase(config.getStepType()) ? "Reviewer" : "Approver";
         
         if (config.getEmpTaskId() != null) {
             // Assignment

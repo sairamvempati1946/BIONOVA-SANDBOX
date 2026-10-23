@@ -513,19 +513,37 @@ const MilestoneCreation = ({ onLogout, userRole }) => {
 
   const getMilestoneFirstDay = () => milestone.tent_st_dt || getTodayDate();
   const generateMilestoneCode = (prjId = milestone.drft_prj_id, list = milestoneList) => {
+    let actualPrjId = prjId;
+    let actualList = list;
+    if (Array.isArray(prjId)) {
+      actualList = prjId;
+      actualPrjId = milestone.drft_prj_id;
+    }
+    if (!actualList || !Array.isArray(actualList)) {
+      actualList = milestoneList || [];
+    }
+
     let maxNum = 0;
-    const projectMilestonesOnly = prjId
-      ? (list || []).filter(m => String(m.projectId || m.drftPrjId || m.drft_prj_id) === String(prjId))
-      : (list || []);
+    const projectMilestonesOnly = actualPrjId
+      ? actualList.filter(m => {
+          const mPrj = m.projectId || m.drftPrjId || m.drft_prj_id || m.prjId || m.prj_id;
+          return String(mPrj) === String(actualPrjId);
+        })
+      : actualList;
 
     projectMilestonesOnly.forEach(m => {
-      const code = m.code || m.mlstnCd || m.mlstm_cd || "";
-      const match = code.match(/(?:MLS|MS)[-_]?(\d+)/i);
+      const code = String(m.code || m.mlstnCd || m.mlstm_cd || m.mlstn_cd || "").trim();
+      const match = code.match(/(?:MLS|MS|ML|M)?[-_]?(\d+)/i) || code.match(/(\d+)/);
       if (match && match[1]) {
         const num = parseInt(match[1], 10);
         if (num > maxNum) maxNum = num;
       }
     });
+
+    if (maxNum === 0 && projectMilestonesOnly.length > 0) {
+      maxNum = projectMilestonesOnly.length;
+    }
+
     const nextNum = maxNum + 1;
     return `MLS-${String(nextNum).padStart(3, '0')}`;
   };
@@ -711,10 +729,26 @@ const MilestoneCreation = ({ onLogout, userRole }) => {
     if (location.state?.createMode || location.state?.projectId || location.state?.taskMode) {
       if (location.state?.projectId) {
         const pId = String(location.state.projectId);
+        
+        // Fetch project milestones immediately to get exact count even before loadAllData finishes
+        fetch(`${API_BASE}/milestone-drafts/by-project/${pId}`, { headers: authHeaders() })
+          .then(res => res.ok ? res.json() : [])
+          .then(pMilestones => {
+            if (Array.isArray(pMilestones)) {
+              const code = generateMilestoneCode(pId, pMilestones);
+              setMilestone(prev => ({
+                ...prev,
+                drft_prj_id: pId,
+                mlstm_cd: code
+              }));
+            }
+          })
+          .catch(() => {});
+
         setMilestone(prev => ({
           ...prev,
           drft_prj_id: pId,
-          mlstm_cd: generateMilestoneCode(milestoneList)
+          mlstm_cd: generateMilestoneCode(pId, milestoneList)
         }));
       }
       setView("form");
@@ -832,7 +866,17 @@ const MilestoneCreation = ({ onLogout, userRole }) => {
       });
 
       // Combine
-      setMilestoneList([...draftList, ...liveList]);
+      const fullList = [...draftList, ...liveList];
+      setMilestoneList(fullList);
+
+      // Auto-update milestone code if creating a new milestone for a project
+      setMilestone(prev => {
+        if (!isEditing && prev.drft_prj_id) {
+          const nextCd = generateMilestoneCode(prev.drft_prj_id, fullList);
+          return { ...prev, mlstm_cd: nextCd };
+        }
+        return prev;
+      });
 
       // 5. Employees & External Employees
       const mappedEmps = (emps || []).map(emp => ({
@@ -3238,10 +3282,36 @@ const MilestoneCreation = ({ onLogout, userRole }) => {
       }
       return true;
     });
+    const compareMilestoneCodes = (a, b) => {
+      const codeA = (a.code || a.mlstnCd || a.mlstm_cd || "").trim();
+      const codeB = (b.code || b.mlstnCd || b.mlstm_cd || "").trim();
+
+      const matchA = codeA.match(/^(?:MLS|MS)-?(\d+)$/i);
+      const matchB = codeB.match(/^(?:MLS|MS)-?(\d+)$/i);
+
+      if (matchA && !matchB) return -1;
+      if (!matchA && matchB) return 1;
+
+      if (matchA && matchB) {
+        const numA = parseInt(matchA[1], 10);
+        const numB = parseInt(matchB[1], 10);
+        return numA !== numB ? numA - numB : codeA.localeCompare(codeB);
+      }
+
+      if (codeA && codeB) {
+        return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+      } else if (codeA) {
+        return -1;
+      } else if (codeB) {
+        return 1;
+      }
+      return (a.title || "").localeCompare(b.title || "");
+    };
+
     const searched = filtered.filter(m =>
       m.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       m.title?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ).sort(compareMilestoneCodes);
 
 
     return (

@@ -1383,6 +1383,37 @@ const Assignment = ({ userRole, onLogout }) => {
     }
   };
 
+  // --- Sorting calculation (same as Company Creation) ---
+  const compareTaskCodes = (a, b, direction = 'asc') => {
+    const codeA = (a.taskCd || a.task_cd || "").trim();
+    const codeB = (b.taskCd || b.task_cd || "").trim();
+
+    const matchA = codeA.match(/^(?:INDTSK|TSK)-?(\d+)$/i);
+    const matchB = codeB.match(/^(?:INDTSK|TSK)-?(\d+)$/i);
+
+    // Proper format always comes first; non-standard format always displayed at the last
+    if (matchA && !matchB) return -1;
+    if (!matchA && matchB) return 1;
+
+    if (matchA && matchB) {
+      const numA = parseInt(matchA[1], 10);
+      const numB = parseInt(matchB[1], 10);
+      const diff = numA !== numB ? numA - numB : codeA.localeCompare(codeB);
+      return direction === 'desc' ? -diff : diff;
+    }
+
+    // Both are non-standard format (remaining items displayed at the last)
+    let diff = 0;
+    if (codeA && codeB) {
+      diff = codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+    } else if (codeA) {
+      diff = -1;
+    } else if (codeB) {
+      diff = 1;
+    }
+    return direction === 'desc' ? -diff : diff;
+  };
+
   // --- Filter tasks ---
   const getFilteredTasks = () => {
     let baseTasks = tasks;
@@ -1397,7 +1428,7 @@ const Assignment = ({ userRole, onLogout }) => {
     }
 
     const q = searchQuery.toLowerCase();
-    return baseTasks.filter(task => {
+    const filtered = baseTasks.filter(task => {
       const taskCodeStr = (task.taskCd || task.task_cd || "").toLowerCase();
       const formattedCodeStr = formatTaskCode(task.taskCd || task.task_cd || "").toLowerCase();
       const taskTitleStr = (task.taskNm || task.task_nm || "").toLowerCase();
@@ -1408,6 +1439,8 @@ const Assignment = ({ userRole, onLogout }) => {
         taskTitleStr.includes(q)
       );
     });
+
+    return filtered.sort((a, b) => compareTaskCodes(a, b, 'asc'));
   };
 
   const filteredTasks = getFilteredTasks();

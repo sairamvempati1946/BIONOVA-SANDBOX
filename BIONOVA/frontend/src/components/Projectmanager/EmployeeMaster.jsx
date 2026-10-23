@@ -1784,6 +1784,11 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
       triggerAlert("error", "Validation Error", "Please fill all required fields");
       return;
     }
+
+    if (!extForm.sts || !extForm.sts.trim()) {
+      triggerAlert("error", "Validation Error", "Employee Status is required.");
+      return;
+    }
     
     try {
       const endpoint = isExtEditing && extEditId 
@@ -1820,18 +1825,44 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
     }
   };
 
+  const compareEmployeeCodes = (a, b) => {
+    const codeA = (a.employeeCode || a.empCode || a.emp_code || a.extEmpCode || a.ext_emp_cd || "").trim();
+    const codeB = (b.employeeCode || b.empCode || b.emp_code || b.extEmpCode || b.ext_emp_cd || "").trim();
+
+    const matchA = codeA.match(/^(?:EMP|EXT)-?(\d+)$/i);
+    const matchB = codeB.match(/^(?:EMP|EXT)-?(\d+)$/i);
+
+    if (matchA && !matchB) return -1;
+    if (!matchA && matchB) return 1;
+
+    if (matchA && matchB) {
+      const numA = parseInt(matchA[1], 10);
+      const numB = parseInt(matchB[1], 10);
+      return numA !== numB ? numA - numB : codeA.localeCompare(codeB);
+    }
+
+    if (codeA && codeB) {
+      return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+    } else if (codeA) {
+      return -1;
+    } else if (codeB) {
+      return 1;
+    }
+    return 0;
+  };
+
   const filteredEmployees = (tableSearchQuery
     ? employees.filter(emp =>
       (emp.employeeCode && emp.employeeCode.toLowerCase().includes(tableSearchQuery.toLowerCase())) ||
       (emp.employeeName && emp.employeeName.toLowerCase().includes(tableSearchQuery.toLowerCase()))
     )
-    : employees).slice().sort((a, b) => (a.employeeCode || '').localeCompare(b.employeeCode || '', undefined, {numeric: true, sensitivity: 'base'}));
+    : employees).slice().sort(compareEmployeeCodes);
 
-  const filteredExternalEmployees = (tableSearchQuery
+  const filteredExternalEmployees = ((tableSearchQuery
     ? externalEmployees.filter(emp =>
       (emp.extEmpCode && emp.extEmpCode.toLowerCase().includes(tableSearchQuery.toLowerCase())) ||
       (emp.extEmpNm && emp.extEmpNm.toLowerCase().includes(tableSearchQuery.toLowerCase()))
-    ) : externalEmployees) || [];
+    ) : externalEmployees) || []).slice().sort(compareEmployeeCodes);
 
   const indexOfLastRecord = currentPage * recordsPerPage;
   const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;

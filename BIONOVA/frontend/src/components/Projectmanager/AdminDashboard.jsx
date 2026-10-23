@@ -550,7 +550,17 @@ const AdminDashboard = ({ userRole, onLogout }) => {
     return generated.length > 0 ? generated.slice(0, 5) : rawList;
   }, [metrics?.systemActivities, tasksList, projectsList]);
 
-  const deadlinesToRender = metrics?.upcomingDeadlines || [];
+  const deadlinesToRender = React.useMemo(() => {
+    const list = metrics?.upcomingDeadlines || [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return list.filter(dl => {
+      if (!dl.dueDate) return false;
+      const due = new Date(dl.dueDate);
+      due.setHours(0, 0, 0, 0);
+      return due.getTime() >= today.getTime();
+    });
+  }, [metrics?.upcomingDeadlines]);
 
   const topProjectsToRender = React.useMemo(() => {
     if (metrics?.topProjects && metrics.topProjects.length >= 3) {
@@ -957,33 +967,39 @@ const AdminDashboard = ({ userRole, onLogout }) => {
                 <h3>Upcoming Deadlines</h3>
               </div>
               <div className="db-list">
-                {deadlinesToRender.map((dl, idx) => {
-                  const critical = dl.critical || dl.isCritical;
-                  let formattedDate = "";
-                  if (dl.dueDate) {
-                    try {
-                      const d = new Date(dl.dueDate);
-                      formattedDate = d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
-                    } catch (_) {
-                      formattedDate = dl.dueDate;
+                {deadlinesToRender.length > 0 ? (
+                  deadlinesToRender.map((dl, idx) => {
+                    const critical = dl.critical || dl.isCritical;
+                    let formattedDate = "";
+                    if (dl.dueDate) {
+                      try {
+                        const d = new Date(dl.dueDate);
+                        formattedDate = d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+                      } catch (_) {
+                        formattedDate = dl.dueDate;
+                      }
                     }
-                  }
-                  return (
-                    <div key={idx} className="list-item deadline-item">
-                      <div className={`list-icon-clear ${critical ? "text-red" : "text-blue"}`}>
-                        {critical ? <Flag size={16} fill="currentColor" /> : <CheckSquare size={16} />}
+                    return (
+                      <div key={idx} className="list-item deadline-item">
+                        <div className={`list-icon-clear ${critical ? "text-red" : "text-blue"}`}>
+                          {critical ? <Flag size={16} fill="currentColor" /> : <CheckSquare size={16} />}
+                        </div>
+                        <div className="list-text">
+                          <p>{dl.title}</p>
+                          <span>{dl.projectName}</span>
+                        </div>
+                        <div className="deadline-date">
+                          <strong>{formattedDate}</strong>
+                          <span className={critical ? "text-red" : "text-orange"}>{dl.timeLeft}</span>
+                        </div>
                       </div>
-                      <div className="list-text">
-                        <p>{dl.title}</p>
-                        <span>{dl.projectName}</span>
-                      </div>
-                      <div className="deadline-date">
-                        <strong>{formattedDate}</strong>
-                        <span className={critical ? "text-red" : "text-orange"}>{dl.timeLeft}</span>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                    No upcoming deadlines
+                  </div>
+                )}
               </div>
             </div>
 

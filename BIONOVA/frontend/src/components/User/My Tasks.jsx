@@ -1353,19 +1353,35 @@ const MyTasks = ({ userRole, onLogout }) => {
   }, [location.state]);
 
   useEffect(() => {
-    if (tasks && tasks.length > 0 && location.state?.selectedTaskId) {
-      const targetId = String(location.state.selectedTaskId).toLowerCase().trim();
+    const rawTarget = location.state?.selectedTaskId || location.state?.taskCode;
+    if (tasks && tasks.length > 0 && rawTarget) {
+      const targetId = String(rawTarget).toLowerCase().trim();
+      const targetCode = location.state?.taskCode ? String(location.state.taskCode).toLowerCase().trim() : '';
+
       const matched = tasks.find(t => {
         const id1 = String(t.taskId || '').toLowerCase().trim();
         const id2 = String(t.id || '').toLowerCase().trim();
-        const id3 = String(t.code || '').toLowerCase().trim();
+        const id3 = String(t.code || t.taskCode || '').toLowerCase().trim();
         const id4 = String(t.empTaskId || '').toLowerCase().trim();
         const id5 = String(t.rawTask?.taskId || '').toLowerCase().trim();
         const id6 = String(t.rawTask?.empTaskId || '').toLowerCase().trim();
         const id7 = String(t.rawTask?.taskCd || t.rawTask?.taskCode || '').toLowerCase().trim();
 
-        return targetId === id1 || targetId === id2 || targetId === id3 ||
+        const directMatch = targetId === id1 || targetId === id2 || targetId === id3 ||
           targetId === id4 || targetId === id5 || targetId === id6 || targetId === id7;
+
+        const codeMatch = targetCode && (
+          targetCode === id1 || targetCode === id2 || targetCode === id3 ||
+          targetCode === id4 || targetCode === id5 || targetCode === id6 || targetCode === id7
+        );
+
+        const matchTarget = targetId.match(/^([a-z]+)-?(\d+)$/i);
+        const matchItem = id2.match(/^([a-z]+)-?(\d+)$/i) || id7.match(/^([a-z]+)-?(\d+)$/i);
+        const numMatch = matchTarget && matchItem &&
+          matchTarget[1].toLowerCase() === matchItem[1].toLowerCase() &&
+          parseInt(matchTarget[2], 10) === parseInt(matchItem[2], 10);
+
+        return directMatch || codeMatch || numMatch;
       });
 
       if (matched) {

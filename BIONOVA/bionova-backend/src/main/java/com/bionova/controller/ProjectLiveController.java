@@ -47,6 +47,7 @@ public class ProjectLiveController {
     @Autowired private com.bionova.repository.ProjectAccessRepository projectAccessRepository;
     @Autowired private com.bionova.repository.PlantRepository plantRepository;
     @Autowired private com.bionova.repository.CompanyRepository companyRepository;
+    @Autowired private com.bionova.service.ProcessWorkflowService processWorkflowService;
 
     /**
      * Determines if the employee has access to the Project module.
@@ -293,6 +294,7 @@ public class ProjectLiveController {
         task.setApproverIds(appIds);
         task.setReviewerNames(revNames);
         task.setApproverNames(appNames);
+        processWorkflowService.populateTaskWorkflowState(task);
     }
 
     private void populateReviewerAndApprover(List<TaskLive> tasks) {

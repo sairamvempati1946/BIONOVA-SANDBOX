@@ -388,8 +388,12 @@ const getActionButton = (task, currentUserEmpId, isExternal = false, employeesLi
   // REVIEWER ACTIONS - DYNAMIC
   // ============================================
   if (isReviewer) {
+    const isActiveReviewer = rawTask?.activeReviewerId 
+      ? String(rawTask.activeReviewerId) === String(currentUserEmpId)
+      : (allReviewerIds.length > 0 ? String(allReviewerIds[0]) === String(currentUserEmpId) : true);
+
     // WORK_IN_PROGRESS with PENDING_REVIEWER or UNDER_REVIEW -> Review
-    if (normalizedProgress === "WORK_IN_PROGRESS" && (process === "PENDING_REVIEWER" || process === "UNDER_REVIEW")) {
+    if (isActiveReviewer && normalizedProgress === "WORK_IN_PROGRESS" && (process === "PENDING_REVIEWER" || process === "UNDER_REVIEW")) {
       return { label: "Review", action: "review", variant: "review" };
     }
 
@@ -401,8 +405,12 @@ const getActionButton = (task, currentUserEmpId, isExternal = false, employeesLi
   // APPROVER ACTIONS - DYNAMIC
   // ============================================
   if (isApprover) {
+    const isActiveApprover = rawTask?.activeApproverId
+      ? String(rawTask.activeApproverId) === String(currentUserEmpId)
+      : (allApproverIds.length > 0 ? String(allApproverIds[0]) === String(currentUserEmpId) : true);
+
     // WORK_IN_PROGRESS with PENDING_APPROVER -> Approve
-    if (normalizedProgress === "WORK_IN_PROGRESS" && process === "PENDING_APPROVER") {
+    if (isActiveApprover && normalizedProgress === "WORK_IN_PROGRESS" && process === "PENDING_APPROVER") {
       return { label: "Approve", action: "approve", variant: "success" };
     }
 
@@ -1701,17 +1709,23 @@ const MyTasks = ({ userRole, onLogout }) => {
       const originalTask = task.rawTask || task;
 
       console.log(`✅ Reviewer approving task ${taskId} via ProcessController`);
-      await apiPost(`/api/process/task/${taskId}/checker-action`, { decision: "YES", empId: currentUserEmpId, remarks: "", isIndividual: task.isIndividual });
+      const res = await apiPost(`/api/process/task/${taskId}/checker-action`, { decision: "YES", empId: currentUserEmpId, remarks: "", isIndividual: task.isIndividual });
 
-      const isCompleted = !originalTask.approverId;
-      if (isCompleted) {
-        await sendNotification(originalTask.empId, `Task Closed: ${task.id}`, task);
-      } else if (originalTask.approverId) {
-        await sendNotification(originalTask.approverId, `Task ready for approval: ${task.id}`, task);
+      const nextPendingEmpId = res?.nextPendingEmpId;
+      const nextStage = res?.nextStage;
+      const alertMsg = res?.message || "Task approved successfully.";
+
+      if (nextPendingEmpId) {
+        const msg = nextStage === "REVIEWER"
+          ? `Task ready for your review: ${task.id || task.taskCd}`
+          : `Task ready for your approval: ${task.id || task.taskCd}`;
+        await sendNotification(nextPendingEmpId, msg, task);
+      } else if (nextStage === "CLOSED") {
+        await sendNotification(originalTask.empId, `Task Closed: ${task.id || task.taskCd}`, task);
       }
 
       const latestTasks = await fetchTasks();
-      triggerAlert("success", "Approved", "Task approved successfully.");
+      triggerAlert("success", "Approved", alertMsg);
       if (selectedTask && latestTasks) {
         const updatedTask = latestTasks.find(t => t.id === task.id);
         if (updatedTask) setSelectedTask(updatedTask);
@@ -1732,15 +1746,20 @@ const MyTasks = ({ userRole, onLogout }) => {
       const originalTask = task.rawTask || task;
 
       console.log(`✅ Approver approving task ${taskId} via ProcessController`);
-      await apiPost(`/api/process/task/${taskId}/reviewer-action`, { decision: "YES", empId: currentUserEmpId, remarks: "", isIndividual: task.isIndividual });
+      const res = await apiPost(`/api/process/task/${taskId}/reviewer-action`, { decision: "YES", empId: currentUserEmpId, remarks: "", isIndividual: task.isIndividual });
 
-      await sendNotification(originalTask.empId, `Task Closed: ${task.id}`, task);
-      if (originalTask.reviewerId) {
-        await sendNotification(originalTask.reviewerId, `Task Closed: ${task.id}`, task);
+      const nextPendingEmpId = res?.nextPendingEmpId;
+      const nextStage = res?.nextStage;
+      const alertMsg = res?.message || (nextStage === "CLOSED" ? "Task closed successfully. 🎉" : "Task forwarded to next approver.");
+
+      if (nextPendingEmpId) {
+        await sendNotification(nextPendingEmpId, `Task ready for your approval: ${task.id || task.taskCd}`, task);
+      } else if (nextStage === "CLOSED") {
+        await sendNotification(originalTask.empId, `Task Closed: ${task.id || task.taskCd}`, task);
       }
 
       const latestTasks = await fetchTasks();
-      triggerAlert("success", "Closed", "Task closed successfully.");
+      triggerAlert("success", nextStage === "CLOSED" ? "Closed" : "Approved", alertMsg);
       if (selectedTask && latestTasks) {
         const updatedTask = latestTasks.find(t => t.id === task.id);
         if (updatedTask) setSelectedTask(updatedTask);
@@ -2063,6 +2082,10 @@ const MyTasks = ({ userRole, onLogout }) => {
 
   const handleSubmitDeny = async (actionType) => {
     if (!selectedTask) return;
+    if (!denyData.reason || !denyData.reason.trim()) {
+      triggerAlert("warning", "Reason Required", "Please enter a detailed reason before submitting.");
+      return;
+    }
     try {
       const originalTask = selectedTask.rawTask || selectedTask;
       const newStatus = actionType || denyData.type || "REASSIGN";
@@ -2290,6 +2313,37 @@ const MyTasks = ({ userRole, onLogout }) => {
     return true;
   };
 
+  const isTaskCurrentlyReassigned = (task) => {
+    const rawTask = task.rawTask || task;
+    const process = String(rawTask?.prcsYesActn || "").toUpperCase();
+    if (process === "REASSIGN") return true;
+
+    const rawSts = String(rawTask?.taskSts || rawTask?.status || task?.status || "").toUpperCase();
+    if (rawSts === "REASSIGN" || rawSts === "REASSIGNED") return true;
+
+    return false;
+  };
+
+  const isTaskPreviouslyReassigned = (task) => {
+    const rawTask = task.rawTask || task;
+    const remStr = rawTask?.addlRem || rawTask?.remarks || task?.remarks || "";
+    if (typeof remStr === 'string' && remStr) {
+      if (remStr.toLowerCase().includes("reassign")) {
+        const parsed = parseRemarksHistory(remStr, task, employeesList);
+        if (parsed.some(r => r.action?.toLowerCase().includes("reassign"))) {
+          return true;
+        }
+        if (remStr.toLowerCase().includes("[reassign")) {
+          return true;
+        }
+      }
+    }
+    if (Array.isArray(task.processHistory) && task.processHistory.some(p => String(p.prcsSts || p.action || "").toUpperCase() === "REASSIGN")) {
+      return true;
+    }
+    return false;
+  };
+
   const getTaskStatusFilter = (task) => {
     const rawTask = task.rawTask || task;
     const rawSts = rawTask.taskSts || rawTask.status || task.status;
@@ -2308,7 +2362,11 @@ const MyTasks = ({ userRole, onLogout }) => {
       return "COMPLETED";
     }
 
-    if (sts === "WIP" || sts === "IN_PROGRESS") {
+    if (sts === "REASSIGN" || sts === "REASSIGNED" || process === "REASSIGN") {
+      return "REASSIGNED";
+    }
+
+    if (sts === "WIP" || sts === "IN_PROGRESS" || sts === "WORK_IN_PROGRESS") {
       if (process === "PENDING_REVIEWER" || process === "PENDING_APPROVER" || process === "UNDER_REVIEW") {
         return "UNDER_REVIEW";
       }
@@ -2316,6 +2374,10 @@ const MyTasks = ({ userRole, onLogout }) => {
         return "REASSIGNED";
       }
       return "IN_PROGRESS";
+    }
+
+    if (process === "PENDING_REVIEWER" || process === "PENDING_APPROVER" || process === "UNDER_REVIEW") {
+      return "UNDER_REVIEW";
     }
 
     if (sts === "HOLD") {
@@ -2366,10 +2428,26 @@ const MyTasks = ({ userRole, onLogout }) => {
 
     if (taskFilter !== "All" && selectedStatus !== "Completed") {
       const statusFilter = getTaskStatusFilter(task);
+      const isCurrReassigned = statusFilter === "REASSIGNED" || isTaskCurrentlyReassigned(task);
+      const isPrevReassigned = isTaskPreviouslyReassigned(task);
+      const isUnderReview = statusFilter === "UNDER_REVIEW";
+
       if (taskFilter === "OVERDUE") {
         if (!isTaskOverdue(task)) return false;
-      } else if (taskFilter === "IN_PROGRESS" && (statusFilter === "REASSIGNED" || statusFilter === "UNDER_REVIEW")) {
-        // allow Reassigned and Under Review tasks in IN_PROGRESS pill filter
+      } else if (taskFilter === "IN_PROGRESS") {
+        if (statusFilter !== "IN_PROGRESS" && !isCurrReassigned && !isUnderReview) {
+          return false;
+        }
+      } else if (taskFilter === "UNDER_REVIEW") {
+        // Allow Under Review tasks as well as Reassigned tasks
+        if (!isUnderReview && !isCurrReassigned && !isPrevReassigned) {
+          return false;
+        }
+      } else if (taskFilter === "REASSIGNED") {
+        // Allow Reassigned tasks and Under Review tasks that were previously reassigned
+        if (!isCurrReassigned && !isPrevReassigned) {
+          return false;
+        }
       } else if (statusFilter !== taskFilter) {
         return false;
       }
@@ -2642,7 +2720,7 @@ const MyTasks = ({ userRole, onLogout }) => {
     setShowDetailView(true);
   };
 
-  const parseRemarksHistory = (rawStr, task, employeesList) => {
+  function parseRemarksHistory(rawStr, task, employeesList) {
     if (!rawStr || typeof rawStr !== 'string') return [];
 
     const rawBlocks = rawStr.split(/\n---\n|\n(?=\[[^\]]+\]:)/).map(s => s.trim()).filter(Boolean);
@@ -2747,7 +2825,7 @@ const MyTasks = ({ userRole, onLogout }) => {
     return parsed;
   };
 
-  const parseProcessHistory = (historyArr, task, employeesList) => {
+  function parseProcessHistory(historyArr, task, employeesList) {
     if (!Array.isArray(historyArr) || historyArr.length === 0) return [];
 
     return historyArr.map((event, idx) => {
@@ -3094,7 +3172,33 @@ const MyTasks = ({ userRole, onLogout }) => {
         "Reviewer": { bg: "#8B5CF6", light: "#EDE9FE" },
         "Approver": { bg: "#F59E0B", light: "#FEF3C7" }
       };
-      const color = roleColors[role] || { bg: "#64748B", light: "#F1F5F9" };
+      const color = role.startsWith("Reviewer")
+        ? roleColors["Reviewer"]
+        : (role.startsWith("Approver") ? roleColors["Approver"] : (roleColors[role] || { bg: "#64748B", light: "#F1F5F9" }));
+
+      // Sequential review stage status
+      let stageBadge = null;
+      if (role.startsWith("Reviewer") && empId) {
+        const isApproved = Array.isArray(rawTask?.approvedReviewerIds) && rawTask.approvedReviewerIds.some(id => String(id) === String(empId));
+        const isActive = String(rawTask?.activeReviewerId) === String(empId) && (currentProcess === "PENDING_REVIEWER" || currentProcess === "UNDER_REVIEW");
+        if (isApproved) {
+          stageBadge = <span style={{ fontSize: "10px", fontWeight: "700", color: "#16a34a", backgroundColor: "#dcfce7", padding: "1px 7px", borderRadius: "10px" }}>✓ Approved</span>;
+        } else if (isActive) {
+          stageBadge = <span style={{ fontSize: "10px", fontWeight: "700", color: "#8b5cf6", backgroundColor: "#f3e8ff", padding: "1px 7px", borderRadius: "10px" }}>⏳ In Review</span>;
+        } else if (currentProcess === "PENDING_REVIEWER" || currentProcess === "PENDING_APPROVER" || currentProcess === "UNDER_REVIEW") {
+          stageBadge = <span style={{ fontSize: "10px", fontWeight: "600", color: "#94a3b8", backgroundColor: "#f1f5f9", padding: "1px 7px", borderRadius: "10px" }}>Waiting</span>;
+        }
+      } else if (role.startsWith("Approver") && empId) {
+        const isApproved = Array.isArray(rawTask?.approvedApproverIds) && rawTask.approvedApproverIds.some(id => String(id) === String(empId));
+        const isActive = String(rawTask?.activeApproverId) === String(empId) && currentProcess === "PENDING_APPROVER";
+        if (isApproved) {
+          stageBadge = <span style={{ fontSize: "10px", fontWeight: "700", color: "#16a34a", backgroundColor: "#dcfce7", padding: "1px 7px", borderRadius: "10px" }}>✓ Approved</span>;
+        } else if (isActive) {
+          stageBadge = <span style={{ fontSize: "10px", fontWeight: "700", color: "#d97706", backgroundColor: "#fef3c7", padding: "1px 7px", borderRadius: "10px" }}>⏳ In Review</span>;
+        } else if (currentProcess === "PENDING_REVIEWER" || currentProcess === "PENDING_APPROVER" || currentProcess === "UNDER_REVIEW") {
+          stageBadge = <span style={{ fontSize: "10px", fontWeight: "600", color: "#94a3b8", backgroundColor: "#f1f5f9", padding: "1px 7px", borderRadius: "10px" }}>Waiting</span>;
+        }
+      }
 
       return (
         <div style={{
@@ -3132,16 +3236,19 @@ const MyTasks = ({ userRole, onLogout }) => {
               />
             ) : initials || "UN"}
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: "600", fontSize: "14px", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
-              <span>{name}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
               {isExternal && (
-                <span style={{ fontSize: "11px", fontWeight: "600", color: "#2563eb", backgroundColor: "#dbeafe", padding: "1px 6px", borderRadius: "8px" }}>
+                <span style={{ fontSize: "11px", fontWeight: "600", color: "#2563eb", backgroundColor: "#dbeafe", padding: "1px 6px", borderRadius: "8px", flexShrink: 0 }}>
                   (External)
                 </span>
               )}
             </div>
-            <div style={{ fontSize: "12px", color: color.bg, fontWeight: "500" }}>{role}</div>
+            <div style={{ fontSize: "12px", color: color.bg, fontWeight: "500", display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+              <span>{role}</span>
+              {stageBadge}
+            </div>
           </div>
           <span style={{
             fontSize: "10px",
@@ -3149,7 +3256,8 @@ const MyTasks = ({ userRole, onLogout }) => {
             color: color.bg,
             backgroundColor: `${color.bg}22`,
             padding: "2px 10px",
-            borderRadius: "12px"
+            borderRadius: "12px",
+            flexShrink: 0
           }}>
             {label}
           </span>
@@ -3194,7 +3302,34 @@ const MyTasks = ({ userRole, onLogout }) => {
       }
 
       // REVIEWER ACTIONS
+      const isActiveReviewer = rawTask?.activeReviewerId 
+        ? String(rawTask.activeReviewerId) === String(currentUserEmpId)
+        : (allTaskRevIds.length > 0 ? String(allTaskRevIds[0]) === String(currentUserEmpId) : isReviewer);
+
       if (isReviewer && (currentProcess === "PENDING_REVIEWER" || currentProcess === "UNDER_REVIEW")) {
+        if (!isActiveReviewer) {
+          const activeRevName = rawTask?.activeReviewerId ? getEmployeeName(rawTask.activeReviewerId, employeesList) : "previous reviewer";
+          const myRevApproved = Array.isArray(rawTask?.approvedReviewerIds) && rawTask.approvedReviewerIds.some(id => String(id) === String(currentUserEmpId));
+          return (
+            <div style={{
+              padding: "12px 16px",
+              backgroundColor: myRevApproved ? "#f0fdf4" : "#f8fafc",
+              border: `1px solid ${myRevApproved ? '#bbf7d0' : '#e2e8f0'}`,
+              borderRadius: "8px",
+              color: myRevApproved ? "#15803d" : "#64748b",
+              fontSize: "13px",
+              width: "100%",
+              textAlign: "center"
+            }}>
+              {myRevApproved ? (
+                <span>✓ You have approved this task. Waiting for next stage.</span>
+              ) : (
+                <span>⏳ Waiting for <strong>{activeRevName}</strong> (Reviewer {rawTask?.activeReviewerIndex || 1}) to complete review.</span>
+              )}
+            </div>
+          );
+        }
+
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
             <button
@@ -3223,7 +3358,34 @@ const MyTasks = ({ userRole, onLogout }) => {
       }
 
       // APPROVER ACTIONS
+      const isActiveApprover = rawTask?.activeApproverId
+        ? String(rawTask.activeApproverId) === String(currentUserEmpId)
+        : (allTaskAppIds.length > 0 ? String(allTaskAppIds[0]) === String(currentUserEmpId) : isApprover);
+
       if (isApprover && currentProcess === "PENDING_APPROVER") {
+        if (!isActiveApprover) {
+          const activeAppName = rawTask?.activeApproverId ? getEmployeeName(rawTask.activeApproverId, employeesList) : "previous approver";
+          const myAppApproved = Array.isArray(rawTask?.approvedApproverIds) && rawTask.approvedApproverIds.some(id => String(id) === String(currentUserEmpId));
+          return (
+            <div style={{
+              padding: "12px 16px",
+              backgroundColor: myAppApproved ? "#f0fdf4" : "#f8fafc",
+              border: `1px solid ${myAppApproved ? '#bbf7d0' : '#e2e8f0'}`,
+              borderRadius: "8px",
+              color: myAppApproved ? "#15803d" : "#64748b",
+              fontSize: "13px",
+              width: "100%",
+              textAlign: "center"
+            }}>
+              {myAppApproved ? (
+                <span>✓ You have approved this task.</span>
+              ) : (
+                <span>⏳ Waiting for <strong>{activeAppName}</strong> (Approver {rawTask?.activeApproverIndex || 1}) to complete approval.</span>
+              )}
+            </div>
+          );
+        }
+
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
             <button
@@ -4906,9 +5068,28 @@ const MyTasks = ({ userRole, onLogout }) => {
                             </div>
 
                             <div className="myt-form-group" style={{ marginBottom: "20px" }}>
-                              <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Reason</label>
-                              <textarea className="myt-input" style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", minHeight: "100px", fontSize: "14px" }}
-                                placeholder="Enter detailed reason for reassigning..." value={denyData.reason || ""} onChange={e => setDenyData({ ...denyData, reason: e.target.value })} />
+                              <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>
+                                Reason <span style={{ color: "#ef4444" }}>*</span>
+                              </label>
+                              <textarea
+                                className="myt-input"
+                                style={{
+                                  width: "100%",
+                                  padding: "12px",
+                                  borderRadius: "8px",
+                                  border: `1px solid ${(!denyData.reason || !denyData.reason.trim()) ? '#f87171' : '#cbd5e1'}`,
+                                  minHeight: "100px",
+                                  fontSize: "14px"
+                                }}
+                                placeholder="Enter detailed reason for reassigning (mandatory)..."
+                                value={denyData.reason || ""}
+                                onChange={e => setDenyData({ ...denyData, reason: e.target.value })}
+                              />
+                              {(!denyData.reason || !denyData.reason.trim()) && (
+                                <small style={{ color: "#ef4444", fontSize: "12px", marginTop: "4px", display: "block" }}>
+                                  Reason is mandatory so the executor understands why the task was reassigned.
+                                </small>
+                              )}
                             </div>
 
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "24px" }}>
@@ -4942,8 +5123,20 @@ const MyTasks = ({ userRole, onLogout }) => {
 
                             <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", paddingTop: "20px", borderTop: "1px solid #e2e8f0" }}>
                               <button className="cc-btn secondary" onClick={() => setShowDenyForm(false)} style={{ borderRadius: "8px", padding: "10px 20px" }}>Cancel</button>
-                              <button className="cc-btn primary" onClick={() => handleSubmitDeny("REASSIGN")} disabled={!denyData.reason}
-                                style={{ borderRadius: "8px", backgroundColor: "#4f46e5", border: "none", color: "white", padding: "10px 24px", fontSize: "15px", fontWeight: "600" }}>
+                              <button
+                                className="cc-btn primary"
+                                onClick={() => handleSubmitDeny("REASSIGN")}
+                                disabled={!denyData.reason || !denyData.reason.trim()}
+                                style={{
+                                  borderRadius: "8px",
+                                  backgroundColor: (!denyData.reason || !denyData.reason.trim()) ? "#94a3b8" : "#4f46e5",
+                                  cursor: (!denyData.reason || !denyData.reason.trim()) ? "not-allowed" : "pointer",
+                                  border: "none",
+                                  color: "white",
+                                  padding: "10px 24px",
+                                  fontSize: "15px",
+                                  fontWeight: "600"
+                                }}>
                                 Submit Reassign
                               </button>
                             </div>
@@ -5025,9 +5218,28 @@ const MyTasks = ({ userRole, onLogout }) => {
                           </div>
 
                           <div className="myt-form-group" style={{ marginBottom: "20px" }}>
-                            <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>Reason</label>
-                            <textarea className="myt-input" style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", minHeight: "100px", fontSize: "14px" }}
-                              placeholder="Enter detailed reason for rework..." value={denyData.reason || ""} onChange={e => setDenyData({ ...denyData, reason: e.target.value })} />
+                            <label style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#475569", marginBottom: "8px" }}>
+                              Reason <span style={{ color: "#ef4444" }}>*</span>
+                            </label>
+                            <textarea
+                              className="myt-input"
+                              style={{
+                                width: "100%",
+                                padding: "12px",
+                                borderRadius: "8px",
+                                border: `1px solid ${(!denyData.reason || !denyData.reason.trim()) ? '#f87171' : '#cbd5e1'}`,
+                                minHeight: "100px",
+                                fontSize: "14px"
+                              }}
+                              placeholder="Enter detailed reason for rework (mandatory)..."
+                              value={denyData.reason || ""}
+                              onChange={e => setDenyData({ ...denyData, reason: e.target.value })}
+                            />
+                            {(!denyData.reason || !denyData.reason.trim()) && (
+                              <small style={{ color: "#ef4444", fontSize: "12px", marginTop: "4px", display: "block" }}>
+                                Reason is mandatory so the executor understands what needs rework.
+                              </small>
+                            )}
                           </div>
 
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "24px" }}>
@@ -5061,8 +5273,20 @@ const MyTasks = ({ userRole, onLogout }) => {
 
                           <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", paddingTop: "20px", borderTop: "1px solid #e2e8f0" }}>
                             <button className="cc-btn secondary" onClick={() => setShowDenyForm(false)} style={{ borderRadius: "8px", padding: "10px 20px" }}>Cancel</button>
-                            <button className="cc-btn primary" onClick={() => handleSubmitDeny("REWORK")} disabled={!denyData.reason}
-                              style={{ borderRadius: "8px", backgroundColor: "#3b82f6", border: "none", color: "white", padding: "10px 24px", fontSize: "15px", fontWeight: "600" }}>
+                            <button
+                              className="cc-btn primary"
+                              onClick={() => handleSubmitDeny("REWORK")}
+                              disabled={!denyData.reason || !denyData.reason.trim()}
+                              style={{
+                                borderRadius: "8px",
+                                backgroundColor: (!denyData.reason || !denyData.reason.trim()) ? "#94a3b8" : "#3b82f6",
+                                cursor: (!denyData.reason || !denyData.reason.trim()) ? "not-allowed" : "pointer",
+                                border: "none",
+                                color: "white",
+                                padding: "10px 24px",
+                                fontSize: "15px",
+                                fontWeight: "600"
+                              }}>
                               Submit Rework
                             </button>
                           </div>

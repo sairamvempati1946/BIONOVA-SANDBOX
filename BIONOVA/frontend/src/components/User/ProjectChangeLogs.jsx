@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, PlusCircle, Edit3, Trash2, Download, 
-  Search, Filter, Eye, X, User, ChevronDown, ChevronUp
+  Search, Filter, Eye, X, User, ChevronDown, ChevronUp,
+  PauseCircle
 } from 'lucide-react';
 import '../../styles/project-change-logs.css';
 
@@ -210,6 +211,11 @@ export default function ProjectChangeLogs({ project, progressData }) {
     total: allMergedLogs.length,
     created: allMergedLogs.filter(l => l.type === 'Created').length,
     updated: allMergedLogs.filter(l => l.type === 'Updated').length,
+    onHold: allMergedLogs.filter(l => 
+      l.type === 'On Hold' || 
+      String(l.newVal || '').toUpperCase().includes('HOLD') ||
+      (l.description && l.description.toUpperCase().includes('TO HOLD'))
+    ).length,
     deleted: allMergedLogs.filter(l => l.type === 'Deleted').length,
     exported: 0  // Remove static dummy value; can be replaced with a real API call if needed
   };
@@ -227,12 +233,11 @@ export default function ProjectChangeLogs({ project, progressData }) {
     if (!searchTerm) return true;
     const lowerSearch = searchTerm.toLowerCase();
     return (
-      log.description.toLowerCase().includes(lowerSearch) ||
-      log.module.toLowerCase().includes(lowerSearch) ||
-      log.changedBy.toLowerCase().includes(lowerSearch) ||
-      log.type.toLowerCase().includes(lowerSearch) ||
-      log.whatChanged.toLowerCase().includes(lowerSearch) ||
-      log.recordId.toLowerCase().includes(lowerSearch)
+      Boolean(log.module && log.module.toLowerCase().includes(lowerSearch)) ||
+      Boolean(log.changedBy && log.changedBy.toLowerCase().includes(lowerSearch)) ||
+      Boolean(log.type && log.type.toLowerCase().includes(lowerSearch)) ||
+      Boolean(log.whatChanged && log.whatChanged.toLowerCase().includes(lowerSearch)) ||
+      Boolean(log.recordId && log.recordId.toLowerCase().includes(lowerSearch))
     );
   });
 
@@ -428,7 +433,7 @@ export default function ProjectChangeLogs({ project, progressData }) {
         <StatCard icon={<FileText color="#3b82f6"/>} label="Total Changes" value={stats.total} bg="#eff6ff" link="" />
         <StatCard icon={<PlusCircle color="#10b981"/>} label="Created" value={stats.created} bg="#ecfdf5" link="" />
         <StatCard icon={<Edit3 color="#f59e0b"/>} label="Updated" value={stats.updated} bg="#fffbeb" link="" />
-        <StatCard icon={<Trash2 color="#ef4444"/>} label="Deleted" value={stats.deleted} bg="#fef2f2" link="" />
+        <StatCard icon={<PauseCircle color="#ea580c"/>} label="On Hold" value={stats.onHold} bg="#ffedd5" link="" />
         <StatCard icon={<Download color="#8b5cf6"/>} label="Exported" value={stats.exported} bg="#f5f3ff" link="" />
       </div>
 
@@ -619,7 +624,23 @@ function TypeBadge({ type }) {
   if (type === 'Updated') colorClass = 'updated';
   if (type === 'Created') colorClass = 'created';
   if (type === 'Deleted') colorClass = 'deleted';
-  return <span className={`pcl-badge ${colorClass}`} style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '500', display: 'inline-block', background: colorClass === 'updated' ? '#fef3c7' : colorClass === 'created' ? '#d1fae5' : '#fee2e2', color: colorClass === 'updated' ? '#b45309' : colorClass === 'created' ? '#047857' : '#b91c1c' }}>{type}</span>;
+  if (type === 'On Hold' || type === 'HOLD') colorClass = 'on-hold';
+  return (
+    <span 
+      className={`pcl-badge ${colorClass}`} 
+      style={{ 
+        padding: '4px 10px', 
+        borderRadius: '12px', 
+        fontSize: '12px', 
+        fontWeight: '500', 
+        display: 'inline-block', 
+        background: colorClass === 'updated' ? '#fef3c7' : colorClass === 'created' ? '#d1fae5' : colorClass === 'on-hold' ? '#ffedd5' : '#fee2e2', 
+        color: colorClass === 'updated' ? '#b45309' : colorClass === 'created' ? '#047857' : colorClass === 'on-hold' ? '#ea580c' : '#b91c1c' 
+      }}
+    >
+      {type}
+    </span>
+  );
 }
 
 function CalendarIcon() {

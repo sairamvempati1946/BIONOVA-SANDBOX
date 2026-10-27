@@ -209,6 +209,17 @@ const DepartmentCreation = ({ userRole, onLogout }) => {
       } else if (value.length > 10) {
         error = "Department Code cannot exceed 10 characters.";
       }
+    } else if (name === "name") {
+      const val = value ? value.trim() : "";
+      if (!val) {
+        error = "Department Name is required.";
+      } else if (/[^a-zA-Z0-9\s]/.test(val)) {
+        error = "Special characters are not allowed in Department Name.";
+      } else if (!/[a-zA-Z]/.test(val)) {
+        error = "Department Name must contain at least one letter.";
+      } else if (val.length > 100) {
+        error = "Department Name cannot exceed 100 characters.";
+      }
     }
     setFormErrors((prev) => ({ ...prev, [name]: error }));
     return error;
@@ -222,6 +233,7 @@ const DepartmentCreation = ({ userRole, onLogout }) => {
       validateField("code", newValue);
     } else if (name === "name") {
       newValue = value.slice(0, 100);
+      validateField("name", newValue);
     } else if (name === "description") {
       newValue = value.slice(0, 255);
     }
@@ -311,6 +323,14 @@ const DepartmentCreation = ({ userRole, onLogout }) => {
     }
     if (form.name.trim().length > 100) {
       triggerAlert("error", "Validation Error", "Department Name cannot exceed 100 characters.");
+      return;
+    }
+    if (/[^a-zA-Z0-9\s]/.test(form.name.trim())) {
+      triggerAlert("error", "Validation Error", "Special characters are not allowed in Department Name.");
+      return;
+    }
+    if (!/[a-zA-Z]/.test(form.name.trim())) {
+      triggerAlert("error", "Validation Error", "Department Name must contain at least one letter.");
       return;
     }
 
@@ -799,6 +819,11 @@ const DepartmentCreation = ({ userRole, onLogout }) => {
                               <span className="dept-input-prefix-icon"><Building size={16} /></span>
                               <input type="text" name="name" value={form.name} onChange={handleChange} placeholder="Enter department name" maxLength="100" required />
                             </div>
+                            {formErrors.name && (
+                              <span className="error-text" style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                                {formErrors.name}
+                              </span>
+                            )}
                           </div>
 
                         </div>

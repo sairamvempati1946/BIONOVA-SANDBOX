@@ -75,6 +75,9 @@ public class TaskLiveController {
     @Autowired
     private com.bionova.repository.ExternalEmployeeRepository externalEmployeeRepository;
 
+    @Autowired
+    private com.bionova.service.ProcessWorkflowService processWorkflowService;
+
     /**
      * Determines if the employee has access to the Project module.
      * Rules:
@@ -239,6 +242,7 @@ public class TaskLiveController {
         task.setApproverIds(appIds);
         task.setReviewerNames(revNames);
         task.setApproverNames(appNames);
+        processWorkflowService.populateTaskWorkflowState(task);
 
         if (task.getTaskId() != null) {
             task.setTeamMembers(teamMemberRepository.findByTaskId(task.getTaskId()));
@@ -369,6 +373,7 @@ public class TaskLiveController {
             task.setApproverIds(appIds);
             task.setReviewerNames(revNames);
             task.setApproverNames(appNames);
+            processWorkflowService.populateTaskWorkflowState(task);
 
             if (!projectStatusCascadeService.isTaskPrerequisitesMet(task)) {
                 task.setIsSequentialLocked(true);

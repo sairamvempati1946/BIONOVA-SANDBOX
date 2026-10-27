@@ -879,6 +879,14 @@ const EmployeeCreation = ({ userRole, onLogout }) => {
       triggerAlert("error", "Validation Error", "Department Name cannot exceed 100 characters.");
       return;
     }
+    if (/[^a-zA-Z0-9\s]/.test(deptForm.name.trim())) {
+      triggerAlert("error", "Validation Error", "Special characters are not allowed in Department Name.");
+      return;
+    }
+    if (!/[a-zA-Z]/.test(deptForm.name.trim())) {
+      triggerAlert("error", "Validation Error", "Department Name must contain at least one letter.");
+      return;
+    }
 
     // 3. Description check
     if (deptForm.description && deptForm.description.length > 255) {

@@ -169,6 +169,24 @@ public class TaskLive {
     @Transient
     private java.util.List<String> approverNames;
 
+    @Transient
+    private Long activeReviewerId;
+
+    @Transient
+    private Long activeApproverId;
+
+    @Transient
+    private Integer activeReviewerIndex;
+
+    @Transient
+    private Integer activeApproverIndex;
+
+    @Transient
+    private java.util.List<Long> approvedReviewerIds;
+
+    @Transient
+    private java.util.List<Long> approvedApproverIds;
+
     public ProcessStatus getProcessStatus() {
         if (subStatus == null || subStatus.isEmpty()) {
             return ProcessStatus.NONE;

@@ -52,6 +52,9 @@ public class AssignmentController {
     @Autowired
     private com.bionova.service.SupabaseStorageService storageService;
 
+    @Autowired
+    private com.bionova.service.ProcessWorkflowService processWorkflowService;
+
     private boolean isAdminOrManager(Employee employee) {
         if (employee == null) {
             return false;
@@ -140,6 +143,7 @@ public class AssignmentController {
         task.setApproverIds(appIds);
         task.setReviewerNames(revNames);
         task.setApproverNames(appNames);
+        processWorkflowService.populateAssignmentWorkflowState(task);
 
         if (task.getEmpTaskId() != null) {
             task.setTeamMembers(teamMemberRepository.findByEmpTaskId(task.getEmpTaskId()));
@@ -290,6 +294,7 @@ public class AssignmentController {
             task.setApproverIds(appIds);
             task.setReviewerNames(revNames);
             task.setApproverNames(appNames);
+            processWorkflowService.populateAssignmentWorkflowState(task);
         }
     }
 

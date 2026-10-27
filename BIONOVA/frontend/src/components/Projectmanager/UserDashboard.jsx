@@ -689,8 +689,8 @@ const UserDashboard = ({ userRole, onLogout }) => {
 
       const milestoneItems = [
         { label: "Closed", count: milestoneCompleted, pct: milestoneTotal > 0 ? ((milestoneCompleted / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#10b981" },
-        { label: "In Progress", count: milestoneInProgress, pct: milestoneTotal > 0 ? ((milestoneInProgress / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
-        { label: "Not Started", count: milestoneNotStarted, pct: milestoneTotal > 0 ? ((milestoneNotStarted / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
+        { label: "In Progress", count: milestoneInProgress, pct: milestoneTotal > 0 ? ((milestoneInProgress / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#f59e0b" },
+        { label: "Not Started", count: milestoneNotStarted, pct: milestoneTotal > 0 ? ((milestoneNotStarted / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#3b82f6" },
         { label: "Delayed", count: milestoneDelayed, pct: milestoneTotal > 0 ? ((milestoneDelayed / milestoneTotal) * 100).toFixed(1) + "%" : "0.0%", color: "#ef4444" },
       ];
 
@@ -954,7 +954,11 @@ const UserDashboard = ({ userRole, onLogout }) => {
   const portfolioItems = data.portfolioItems || [];
   const portfolioTotal = data.portfolioTotal || 0;
   const portfolioPercentage = data.portfolioPercentage || "0.00%";
-  const milestoneItems = data.milestoneItems || [];
+  const milestoneItems = (data.milestoneItems || []).map(item => {
+    if (item.label === "In Progress") return { ...item, color: "#f59e0b" };
+    if (item.label === "Not Started") return { ...item, color: "#3b82f6" };
+    return item;
+  });
   const milestoneTotal = data.milestoneTotal || 0;
   const taskStatusItems = data.taskStatusItems || [];
   const taskTotal = data.taskTotal || 0;

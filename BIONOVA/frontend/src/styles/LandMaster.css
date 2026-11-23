@@ -305,6 +305,12 @@ body {
   font-size: 13px;
 }
 
+@media (min-width: 769px) {
+  .land-master-table {
+    min-width: 2200px;
+  }
+}
+
 .al-list-table thead {
   background: #f8fafc;
 }
@@ -794,7 +800,14 @@ body {
   }
   
   .al-shell {
-    /* removed margin-left: 0 to respect sidebar width */
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .al-main {
+    padding: 10px 12px !important;
+    padding-top: 8px !important;
   }
   
   .al-form-layout-row.columns-4 {
@@ -895,8 +908,502 @@ body {
 
 /* Added globally via script for responsive sidebar */
 @media (max-width: 768px) {
-  .al-shell { margin-left: 240px; } /* matches sidebar.css */
+  .al-shell { margin-left: 0 !important; width: 100% !important; }
 }
 @media (max-width: 480px) {
-  .al-shell { margin-left: 70px; } /* matches sidebar.css */
+  .al-shell { margin-left: 0 !important; width: 100% !important; }
+}
+
+/* Land List Header */
+.al-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.al-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.al-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.al-search-input {
+  padding: 8px 12px 8px 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  width: 250px;
+  box-sizing: border-box;
+}
+
+/* Land Master Mobile Enhancements */
+@media (max-width: 768px) {
+  .al-list-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+    padding: 16px !important;
+  }
+  .al-list-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+  .al-search-box {
+    width: 100% !important;
+    position: relative !important;
+  }
+  .al-search-input {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    height: 42px !important;
+    box-sizing: border-box !important;
+  }
+  .al-btn-add-new {
+    width: 100% !important;
+    min-width: 100% !important;
+    justify-content: center !important;
+    align-items: center !important;
+    height: 42px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .al-table-container {
+    overflow-x: hidden !important;
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+  /* ─── Land Creation List: Mobile 3-Column View (Only Code, Name, Action) ─── */
+  .land-master-table,
+  .al-list-table.land-master-table {
+    display: table !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    background: #ffffff !important;
+  }
+
+  .land-master-table thead,
+  .al-list-table.land-master-table thead {
+    display: table-header-group !important;
+  }
+
+  .land-master-table thead tr,
+  .al-list-table.land-master-table thead tr {
+    display: table-row !important;
+    background: #f8fafc !important;
+    border-bottom: 2px solid #e2e8f0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .land-master-table tbody,
+  .al-list-table.land-master-table tbody {
+    display: table-row-group !important;
+  }
+
+  .land-master-table tbody tr,
+  .al-list-table.land-master-table tbody tr {
+    display: table-row !important;
+    background: #ffffff !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .land-master-table tbody tr:hover,
+  .al-list-table.land-master-table tbody tr:hover {
+    background: #f8fafc !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide all columns except CODE, PLANT, and ACTIONS */
+  .land-master-table th,
+  .land-master-table td,
+  .al-list-table.land-master-table th,
+  .al-list-table.land-master-table td {
+    display: none !important;
+  }
+
+  .land-master-table th.land-col-hide-mobile,
+  .land-master-table td.land-col-hide-mobile,
+  .al-list-table.land-master-table th.land-col-hide-mobile,
+  .al-list-table.land-master-table td.land-col-hide-mobile {
+    display: none !important;
+  }
+
+  .land-master-table td::before,
+  .al-list-table.land-master-table td::before {
+    display: none !important;
+    content: none !important;
+  }
+
+  /* 1. Land Code Column */
+  .land-master-table th.col-land-code,
+  .land-master-table td.col-land-code,
+  .al-list-table.land-master-table th.col-land-code,
+  .al-list-table.land-master-table td.col-land-code {
+    display: table-cell !important;
+    width: 32% !important;
+    padding: 12px 8px !important;
+    vertical-align: middle !important;
+    text-align: left !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    border-top: none !important;
+    margin: 0 !important;
+  }
+
+  .land-master-table td.col-land-code span,
+  .al-list-table.land-master-table td.col-land-code span {
+    display: inline-block !important;
+    font-size: 12px !important;
+    padding: 4px 6px !important;
+    word-break: break-all !important;
+  }
+
+  /* 2. Plant / Land Name Column */
+  .land-master-table th.col-land-name,
+  .land-master-table td.col-land-name,
+  .al-list-table.land-master-table th.col-land-name,
+  .al-list-table.land-master-table td.col-land-name {
+    display: table-cell !important;
+    width: 53% !important;
+    padding: 12px 8px !important;
+    vertical-align: middle !important;
+    text-align: left !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
+    word-break: break-word !important;
+    white-space: normal !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    border-top: none !important;
+    margin: 0 !important;
+  }
+
+  /* 3. Actions Column (Right next to Plant name) */
+  .land-master-table th.col-land-actions,
+  .land-master-table td.col-land-actions,
+  .al-list-table.land-master-table th.col-land-actions,
+  .al-list-table.land-master-table td.col-land-actions {
+    display: table-cell !important;
+    width: 15% !important;
+    padding: 12px 4px !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+    position: relative !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    border-top: none !important;
+    margin: 0 !important;
+  }
+
+  .land-master-table td.col-land-empty,
+  .al-list-table.land-master-table td.col-land-empty {
+    display: table-cell !important;
+    text-align: center !important;
+    padding: 40px 16px !important;
+    width: 100% !important;
+  }
+
+  .al-pagination-bar {
+    flex-direction: column !important;
+    gap: 12px !important;
+    padding: 14px 16px !important;
+    align-items: center !important;
+  }
+  .al-form-footer {
+    flex-direction: column-reverse !important;
+    padding: 16px !important;
+    gap: 10px !important;
+  }
+  .al-form-footer .al-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    height: 44px !important;
+  }
+}
+
+/* ========================================================
+   Land Photos & Site Gallery (Responsive UI)
+   ======================================================== */
+.al-photos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.al-photo-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.al-photo-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  border-color: #cbd5e1;
+}
+
+.al-photo-thumb-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.al-photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.al-photo-card:hover .al-photo-img {
+  transform: scale(1.04);
+}
+
+.al-photo-primary-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: linear-gradient(135deg, #15803d 0%, #16a34a 100%);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+  text-transform: uppercase;
+}
+
+.al-photo-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 3;
+}
+
+.al-photo-card:hover .al-photo-overlay,
+.al-photo-card:focus-within .al-photo-overlay {
+  opacity: 1;
+}
+
+.al-photo-overlay.always-show-eye {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.al-view-pill {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.al-photo-action-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.al-photo-action-btn:hover {
+  background: #ffffff;
+  transform: scale(1.1);
+  color: #2563eb;
+}
+
+.al-photo-action-btn.delete {
+  color: #dc2626;
+}
+
+.al-photo-action-btn.delete:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.al-photo-info {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #ffffff;
+}
+
+.al-photo-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.al-photo-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.al-btn-set-primary {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+
+/* Upload Tile (small inline card next to photos) */
+.al-upload-tile {
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 180px;
+  box-sizing: border-box;
+}
+
+.al-upload-tile:hover,
+.al-upload-tile.drag-over {
+  border-color: #2563eb;
+  background: #eff6ff;
+  transform: translateY(-2px);
+}
+
+.al-upload-tile-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #e0e7ff;
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.al-upload-tile:hover .al-upload-tile-icon {
+  transform: scale(1.08);
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.al-upload-tile-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  text-align: center;
+}
+
+.al-upload-tile-sub {
+  font-size: 10px;
+  color: #64748b;
+  text-align: center;
+}
+
+.al-btn-set-primary:hover {
+  color: #1d4ed8;
+}
+
+/* Dropzone Hover Effects */
+.al-dropzone:hover {
+  border-color: #2563eb !important;
+  background-color: #eff6ff !important;
+}
+
+/* Responsive adjustments for mobile & tablet */
+@media (max-width: 768px) {
+  .al-photos-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .al-photo-thumb-wrap {
+    aspect-ratio: 1 / 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .al-photos-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .al-photo-info {
+    padding: 8px 10px;
+  }
+  .al-photo-name {
+    font-size: 11px;
+  }
+  .al-photo-meta {
+    font-size: 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
 }

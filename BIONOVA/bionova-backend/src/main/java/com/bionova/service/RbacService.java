@@ -10,6 +10,8 @@ import com.bionova.repository.*;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
@@ -35,7 +37,31 @@ public class RbacService {
 
 
     public List<ScreenMaster> getAllScreens() {
+        ensureOperationalScreens();
         return screenMasterRepository.findAll();
+    }
+
+    private void ensureOperationalScreens() {
+        try {
+            ensureScreen("PROCUREMENT_MANAGEMENT", "Procurement & PO Management", "Supply Chain & Operations");
+            ensureScreen("ASSET_MAINTENANCE", "Equipment & Asset Maintenance (CMMS)", "Supply Chain & Operations");
+            ensureScreen("FLEET_DISPATCH", "Fleet & Dispatch Logistics", "Supply Chain & Operations");
+            ensureScreen("INVENTORY_MANAGEMENT", "Inventory Management", "Inventory");
+            ensureScreen("VISITOR_MANAGEMENT", "Visitor Management", "Visitor Management");
+            ensureScreen("EXECUTIVE_MODULE", "Executive Overview", "Executive");
+        } catch (Exception e) {
+            // Silently continue if DB temporarily read-only
+        }
+    }
+
+    private void ensureScreen(String code, String name, String group) {
+        if (screenMasterRepository.findByScreenCode(code).isEmpty()) {
+            ScreenMaster sm = new ScreenMaster();
+            sm.setScreenCode(code);
+            sm.setScreenNm(name);
+            sm.setGroupNm(group);
+            screenMasterRepository.save(sm);
+        }
     }
 
     public List<RoleDto> getAllRoles() {
@@ -47,9 +73,10 @@ public class RbacService {
 
     /**
      * Returns true if the employee has at least one RBAC mapping in the database.
-     * When false → no RBAC configured yet → show all screens (full_access mode).
-     * When true  → RBAC is set up → filter screens based on permissions.
+     * When false â†’ no RBAC configured yet â†’ show all screens (full_access mode).
+     * When true  â†’ RBAC is set up â†’ filter screens based on permissions.
      */
+    @Cacheable(value = "rbacHasRbac", key = "#empId")
     public boolean hasRbacConfigured(Long empId) {
         return !employeeMappingRepository.findByEmpId(empId).isEmpty();
     }
@@ -84,6 +111,7 @@ public class RbacService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "rbacPermissions", key = "#empId")
     public List<ScreenPermissionDto> getEmployeePermissions(Long empId) {
         List<RoleBasedEmployeeMapping> mappings = employeeMappingRepository.findByEmpId(empId);
         if (mappings.isEmpty()) {
@@ -117,6 +145,7 @@ public class RbacService {
     }
 
     @Transactional
+    @CacheEvict(value = {"rbacHasRbac", "rbacPermissions"}, allEntries = true)
     public void saveAccess(SaveAccessRequest request) {
         if (request.getEmpIds() == null || request.getEmpIds().isEmpty()) {
             throw new IllegalArgumentException("At least one employee must be selected.");
@@ -285,6 +314,7 @@ public class RbacService {
     }
 
     @Transactional
+    @CacheEvict(value = {"rbacHasRbac", "rbacPermissions"}, allEntries = true)
     public void updateEmployeePermissions(Long empId, UpdateEmployeePermissionsRequest request) {
         List<RoleBasedEmployeeMapping> oldMappings = employeeMappingRepository.findByEmpId(empId);
 

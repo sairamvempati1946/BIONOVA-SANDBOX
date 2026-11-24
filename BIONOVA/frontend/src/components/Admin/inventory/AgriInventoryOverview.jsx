@@ -26,13 +26,84 @@ import {
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem } from "./inventoryApi";
 
 const STORAGE_KEY = "bionova_inventory_items_v1";
-try { const _raw = localStorage.getItem(STORAGE_KEY); if (_raw && (_raw.includes("INV-") || _raw.includes("CIV-") || _raw.includes("FST-") || _raw.includes("BN-") || _raw.includes("UltraTech") || _raw.includes("Neuman"))) { localStorage.removeItem(STORAGE_KEY); } } catch(e){}
 
-const INITIAL_ITEMS = [];
+const INITIAL_ITEMS = [
+  {
+    id: 1,
+    sku: "AGR-SD-001",
+    name: "Super Napier Hybrid Grass Stem Cuttings",
+    category: "Seeds",
+    batchNo: "LOT-2026-NPR01",
+    currentStock: 25000,
+    reorderThreshold: 5000,
+    uom: "Kg",
+    plantLocation: "Plant 1 - Hyderabad East CBG",
+    unitCost: 12,
+    expiryDate: "2027-06-30",
+    supplier: "Telangana State Seeds Dev Corp",
+    notes: "High biomass yield energy crop for primary anaerobic digester feedstock."
+  },
+  {
+    id: 2,
+    sku: "AGR-CH-002",
+    name: "Anaerobic Methanogenic Bacterial Inoculant",
+    category: "Agrochemicals",
+    batchNo: "LOT-2026-BIO09",
+    currentStock: 850,
+    reorderThreshold: 200,
+    uom: "Ltr",
+    plantLocation: "Plant 1 - Hyderabad East CBG",
+    unitCost: 450,
+    expiryDate: "2027-03-15",
+    supplier: "Biochem Agrotech Solutions Ltd",
+    notes: "Specialized thermophilic culture to accelerate biogas production."
+  },
+  {
+    id: 3,
+    sku: "AGR-EQ-003",
+    name: "Heavy-Duty Biomass Forage Harvester Blades",
+    category: "Equipment",
+    batchNo: "LOT-2026-BLD14",
+    currentStock: 18,
+    reorderThreshold: 6,
+    uom: "Sets",
+    plantLocation: "Plant 2 - Medak Agri Hub",
+    unitCost: 14500,
+    expiryDate: "N/A",
+    supplier: "Claas Agriculture India Pvt Ltd",
+    notes: "High manganese steel replacement blades for Claas Jaguar harvester fleet."
+  },
+  {
+    id: 4,
+    sku: "AGR-SD-004",
+    name: "Sorghum Bicolor (Sweet Sorghum) High-Brix Seeds",
+    category: "Seeds",
+    batchNo: "LOT-2026-SRG04",
+    currentStock: 4200,
+    reorderThreshold: 1000,
+    uom: "Kg",
+    plantLocation: "Plant 3 - Nalgonda Biomass Facility",
+    unitCost: 85,
+    expiryDate: "2027-08-20",
+    supplier: "Advanta Golden Seeds India Ltd",
+    notes: "High sugar content sorghum feedstock buffer for monsoon season."
+  }
+];
 
 const AgriInventoryOverview = ({ screenPerm }) => {
   // Inventory state
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      return INITIAL_ITEMS;
+    } catch (e) {
+      return INITIAL_ITEMS;
+    }
+  });
 
   // Filter & Search states
   const [searchTerm, setSearchTerm] = useState("");
@@ -98,11 +169,12 @@ const AgriInventoryOverview = ({ screenPerm }) => {
 
   // Filtered List
   const filteredItems = items.filter(item => {
+    const s = (searchTerm || "").toLowerCase();
     const matchesSearch =
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.batchNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.supplier.toLowerCase().includes(searchTerm.toLowerCase());
+      (item.name || "").toLowerCase().includes(s) ||
+      (item.sku || "").toLowerCase().includes(s) ||
+      (item.batchNo || "").toLowerCase().includes(s) ||
+      (item.supplier || "").toLowerCase().includes(s);
 
     const matchesCategory = categoryFilter === "All" || item.category === categoryFilter;
     const matchesPlant = plantFilter === "All" || item.plantLocation === plantFilter;
@@ -160,7 +232,7 @@ const AgriInventoryOverview = ({ screenPerm }) => {
   };
 
   // Save Item (Add or Edit)
-  const handleSaveItem = (e) => {
+  const handleSaveItem = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       alert("Please enter an item name.");
@@ -168,26 +240,40 @@ const AgriInventoryOverview = ({ screenPerm }) => {
     }
 
     if (modalMode === "add") {
+      const tempId = Date.now();
       const newItem = {
         ...formData,
-        id: Date.now(),
-        currentStock: Number(formData.currentStock),
-        reorderThreshold: Number(formData.reorderThreshold),
-        unitCost: Number(formData.unitCost)
+        id: tempId,
+        currentStock: Number(formData.currentStock) || 0,
+        reorderThreshold: Number(formData.reorderThreshold) || 0,
+        unitCost: Number(formData.unitCost) || 0
       };
-      saveInventoryItem(newItem).then(res => {
-        setItems(prev => [res || newItem, ...prev.filter(i => i.id !== newItem.id)]);
-      }).catch(err => console.warn(err));
-      setItems([newItem, ...items]);
+      setItems(prev => [newItem, ...prev.filter(i => i.id !== tempId)]);
+      setIsModalOpen(false);
+      try {
+        const res = await saveInventoryItem(newItem);
+        if (res && res.id) {
+          setItems(prev => [res, ...prev.filter(i => i.id !== tempId && i.id !== res.id)]);
+        }
+      } catch (err) {
+        console.warn("Backend save failed, saved to local state:", err);
+      }
     } else {
-      setItems(items.map(it => it.id === selectedItem.id ? {
+      const updatedItem = {
         ...formData,
-        currentStock: Number(formData.currentStock),
-        reorderThreshold: Number(formData.reorderThreshold),
-        unitCost: Number(formData.unitCost)
-      } : it));
+        id: selectedItem.id,
+        currentStock: Number(formData.currentStock) || 0,
+        reorderThreshold: Number(formData.reorderThreshold) || 0,
+        unitCost: Number(formData.unitCost) || 0
+      };
+      setItems(prev => prev.map(it => it.id === selectedItem.id ? updatedItem : it));
+      setIsModalOpen(false);
+      try {
+        await saveInventoryItem(updatedItem, selectedItem.id);
+      } catch (err) {
+        console.warn("Backend update failed, saved to local state:", err);
+      }
     }
-    setIsModalOpen(false);
   };
 
   // Apply Quick Stock Adjustment
@@ -718,12 +804,12 @@ const AgriInventoryOverview = ({ screenPerm }) => {
                         <span className="inv-batch-text">{item.batchNo}</span>
                       </td>
                       <td>
-                        <span className="inv-stock-qty">{item.currentStock.toLocaleString()}</span>{" "}
+                        <span className="inv-stock-qty">{(Number(item.currentStock) || 0).toLocaleString()}</span>{" "}
                         <span className="inv-stock-uom">{item.uom}</span>
                       </td>
                       <td>
                         <span className="inv-threshold-text">
-                          {item.reorderThreshold.toLocaleString()} {item.uom}
+                          {(Number(item.reorderThreshold) || 0).toLocaleString()} {item.uom}
                         </span>
                       </td>
                       <td>

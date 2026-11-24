@@ -22,12 +22,77 @@ import {
 import { getPipingSpares, savePipingSpare, deletePipingSpare } from "./inventoryApi";
 
 const STORAGE_KEY = "bionova_piping_instrumentation_v1";
-try { const _raw = localStorage.getItem(STORAGE_KEY); if (_raw && (_raw.includes("INV-") || _raw.includes("CIV-") || _raw.includes("FST-") || _raw.includes("BN-") || _raw.includes("UltraTech") || _raw.includes("Neuman"))) { localStorage.removeItem(STORAGE_KEY); } } catch(e){}
 
-const INITIAL_PID_SPARES = [];
+const INITIAL_PID_SPARES = [
+  {
+    id: 1,
+    tagNo: "PID-FA-01",
+    name: "Deflagration Flame Arrestor & Thermal Sensor",
+    category: "Flame Arrestors & PRVs",
+    material: "SS 316L Flame Element / WCB Body",
+    sizeRating: "DN100 (4-Inch) ANSI 150# RF",
+    endConnection: "Flanged ANSI 150#",
+    operatingTemp: "-20°C to +150°C",
+    currentStock: 4,
+    reorderThreshold: 2,
+    uom: "Units",
+    location: "Safety Instrumentation Bay",
+    unitCost: 145000,
+    supplier: "Elmac Technologies Ltd",
+    pidLineRef: "P&ID-BG-L01-100",
+    notes: "Explosion-proof safety critical barrier on main biogas digester outlet line."
+  },
+  {
+    id: 2,
+    tagNo: "PID-PV-02",
+    name: "Pneumatic Emergency Shutdown (ESD) Ball Valve",
+    category: "Pneumatic Valves",
+    material: "Forged Steel A105 / SS316 Ball",
+    sizeRating: "DN80 (3-Inch) ANSI 300# RF",
+    endConnection: "Flanged ANSI 300#",
+    operatingTemp: "-29°C to +180°C",
+    currentStock: 6,
+    reorderThreshold: 2,
+    uom: "Units",
+    location: "Valves & Actuators Store",
+    unitCost: 68000,
+    supplier: "L&T Valves Limited",
+    pidLineRef: "P&ID-BG-L03-080",
+    notes: "Spring return fail-close ESD valve integrated into SCADA safety trip."
+  },
+  {
+    id: 3,
+    tagNo: "PID-FM-03",
+    name: "Coriolis Mass Flow Meter (High Accuracy)",
+    category: "Flow & Pressure Instruments",
+    material: "Hastelloy C-22 Measuring Tubes",
+    sizeRating: "DN50 (2-Inch) Class 300",
+    endConnection: "Flanged ANSI 300#",
+    operatingTemp: "-50°C to +200°C",
+    currentStock: 3,
+    reorderThreshold: 1,
+    uom: "Units",
+    location: "Instrument Calibration Room",
+    unitCost: 320000,
+    supplier: "Endress+Hauser India Pvt Ltd",
+    pidLineRef: "P&ID-CBG-DISP-050",
+    notes: "Fiscal custody transfer certified mass flow meter for CBG dispenser."
+  }
+];
 
 const PipingInstrumentation = ({ screenPerm }) => {
-  const [spares, setSpares] = useState([]);
+  const [spares, setSpares] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      return INITIAL_PID_SPARES;
+    } catch (e) {
+      return INITIAL_PID_SPARES;
+    }
+  });
 
   useEffect(() => {
     getPipingSpares().then(res => {
@@ -68,21 +133,30 @@ const PipingInstrumentation = ({ screenPerm }) => {
   }, [spares]);
 
   // KPIs
-  const totalValuation = spares.reduce((acc, it) => acc + (it.currentStock * it.unitCost), 0);
-  const lowStockCount = spares.filter(it => it.currentStock <= it.reorderThreshold).length;
-  const safetyCriticalCount = spares.filter(it => it.category === "Flame Arrestors & PRVs" || it.category === "Pneumatic Valves").length;
+  const totalValuation = spares.reduce((acc, it) => acc + ((Number(it.currentStock || it.stockQty || 0)) * (Number(it.unitCost || 0))), 0);
+  const lowStockCount = spares.filter(it => (Number(it.currentStock || it.stockQty || 0)) <= (Number(it.reorderThreshold || it.reorderPoint || 0))).length;
+  const safetyCriticalCount = spares.filter(it => (it.category || it.valveType) === "Flame Arrestors & PRVs" || (it.category || it.valveType) === "Pneumatic Valves").length;
 
   // Filter
   const filteredSpares = spares.filter(item => {
-    const matchesSearch =
-      item.tagNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.material.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sizeRating.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.pidLineRef.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.supplier && item.supplier.toLowerCase().includes(searchTerm.toLowerCase()));
+    const s = (searchTerm || "").toLowerCase();
+    const tag = item.tagNo || "";
+    const name = item.name || item.componentName || "";
+    const mat = item.material || item.materialMoc || "";
+    const rating = item.sizeRating || item.pressureRating || item.lineSize || "";
+    const pRef = item.pidLineRef || item.pndRef || "";
+    const sup = item.supplier || "";
 
-    const matchesCategory = categoryFilter === "All" || item.category === categoryFilter;
+    const matchesSearch =
+      tag.toLowerCase().includes(s) ||
+      name.toLowerCase().includes(s) ||
+      mat.toLowerCase().includes(s) ||
+      rating.toLowerCase().includes(s) ||
+      pRef.toLowerCase().includes(s) ||
+      sup.toLowerCase().includes(s);
+
+    const itemCat = item.category || item.valveType || "";
+    const matchesCategory = categoryFilter === "All" || itemCat === categoryFilter;
 
     return matchesSearch && matchesCategory;
   });
@@ -128,28 +202,41 @@ const PipingInstrumentation = ({ screenPerm }) => {
     }
   };
 
-  const handleSaveForm = (e) => {
+  const handleSaveForm = async (e) => {
     e.preventDefault();
     const cleanItem = {
       ...formData,
-      currentStock: Number(formData.currentStock),
-      reorderThreshold: Number(formData.reorderThreshold),
-      unitCost: Number(formData.unitCost)
+      currentStock: Number(formData.currentStock) || 0,
+      reorderThreshold: Number(formData.reorderThreshold) || 0,
+      unitCost: Number(formData.unitCost) || 0
     };
 
     if (modalMode === "add") {
-      const newItem = { ...cleanItem, id: Date.now() };
-      savePipingSpare(cleanItem).then(res => {
-        if (res) setSpares(prev => [res, ...prev.filter(s => s.id !== newItem.id)]);
-      }).catch(err => console.warn(err));
-      setSpares([newItem, ...spares]);
+      const tempId = Date.now();
+      const newItem = { ...cleanItem, id: tempId };
+      setSpares(prev => [newItem, ...prev.filter(s => s.id !== tempId)]);
+      setIsModalOpen(false);
+      try {
+        const res = await savePipingSpare(cleanItem);
+        if (res && res.id) {
+          setSpares(prev => [res, ...prev.filter(s => s.id !== tempId && s.id !== res.id)]);
+        }
+      } catch (err) {
+        console.warn("Backend save warning:", err);
+      }
     } else {
-      savePipingSpare(cleanItem, selectedSpare.id).then(res => {
-        if (res) setSpares(prev => prev.map(s => s.id === selectedSpare.id ? res : s));
-      }).catch(err => console.warn(err));
-      setSpares(spares.map(s => s.id === selectedSpare.id ? { ...cleanItem, id: selectedSpare.id } : s));
+      const updated = { ...cleanItem, id: selectedSpare.id };
+      setSpares(prev => prev.map(s => s.id === selectedSpare.id ? updated : s));
+      setIsModalOpen(false);
+      try {
+        const res = await savePipingSpare(cleanItem, selectedSpare.id);
+        if (res && res.id) {
+          setSpares(prev => prev.map(s => s.id === selectedSpare.id ? res : s));
+        }
+      } catch (err) {
+        console.warn("Backend update warning:", err);
+      }
     }
-    setIsModalOpen(false);
   };
 
   const handleExportCSV = () => {
@@ -653,10 +740,10 @@ const PipingInstrumentation = ({ screenPerm }) => {
                       </td>
                       <td>
                         <span className="inv-badge-category" style={{
-                          backgroundColor: item.category.includes("Flame") ? "#fee2e2" : item.category.includes("Pneumatic") ? "#fef3c7" : item.category.includes("Flow") ? "#e0e7ff" : "#f1f5f9",
-                          color: item.category.includes("Flame") ? "#b91c1c" : item.category.includes("Pneumatic") ? "#b45309" : item.category.includes("Flow") ? "#4338ca" : "#334155"
+                          backgroundColor: (item.category && item.category.includes("Flame")) ? "#fee2e2" : (item.category && item.category.includes("Pneumatic")) ? "#fef3c7" : (item.category && item.category.includes("Flow")) ? "#e0e7ff" : "#f1f5f9",
+                          color: (item.category && item.category.includes("Flame")) ? "#b91c1c" : (item.category && item.category.includes("Pneumatic")) ? "#b45309" : (item.category && item.category.includes("Flow")) ? "#4338ca" : "#334155"
                         }}>
-                          {item.category}
+                          {item.category || "Valves"}
                         </span>
                       </td>
                       <td>
@@ -673,10 +760,10 @@ const PipingInstrumentation = ({ screenPerm }) => {
                       </td>
                       <td>
                         <div style={{ fontWeight: "800", color: isLow ? "#dc2626" : "#059669" }}>
-                          {item.currentStock} {item.uom}
+                          {(Number(item.currentStock) || 0).toLocaleString()} {item.uom || "Units"}
                         </div>
                         <div style={{ fontSize: "11px", color: "#64748b" }}>
-                          Min: {item.reorderThreshold} {item.uom}
+                          Min: {(Number(item.reorderThreshold) || 0).toLocaleString()} {item.uom || "Units"}
                         </div>
                       </td>
                       <td>

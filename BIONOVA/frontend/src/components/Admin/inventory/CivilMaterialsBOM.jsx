@@ -23,12 +23,77 @@ import {
 import { getCivilMaterials, saveCivilMaterial, deleteCivilMaterial } from "./inventoryApi";
 
 const STORAGE_KEY = "bionova_civil_materials_bom_v1";
-try { const _raw = localStorage.getItem(STORAGE_KEY); if (_raw && (_raw.includes("INV-") || _raw.includes("CIV-") || _raw.includes("FST-") || _raw.includes("BN-") || _raw.includes("UltraTech") || _raw.includes("Neuman"))) { localStorage.removeItem(STORAGE_KEY); } } catch(e){}
 
-const INITIAL_CIVIL_MATERIALS = [];
+const INITIAL_CIVIL_MATERIALS = [
+  {
+    id: 1,
+    code: "CIV-STEEL-01",
+    name: "Thermo-Mechanically Treated (TMT) Fe550D Rebar 16mm",
+    category: "Structural Steel",
+    stage: "Digester Foundation",
+    gradeSpec: "Fe550D IS 1786",
+    bomRequiredQty: 120,
+    procuredQty: 100,
+    currentStock: 45,
+    allocatedQty: 55,
+    uom: "MT",
+    unitCost: 58000,
+    targetStructure: "Anaerobic Digester Tank #1 RCC Raft",
+    supplier: "Tata Steel Ltd (Tiscon)",
+    deliveryStatus: "Stock Available",
+    inspectionStatus: "Passed 3rd-Party QC"
+  },
+  {
+    id: 2,
+    code: "CIV-CONC-02",
+    name: "Ready Mix Concrete M35 Sulfate-Resistant",
+    category: "Cement & Aggregates",
+    stage: "Gas Holder Sump RCC",
+    gradeSpec: "M35 High Durability",
+    bomRequiredQty: 450,
+    procuredQty: 380,
+    currentStock: 120,
+    allocatedQty: 260,
+    uom: "Cu.M",
+    unitCost: 4800,
+    targetStructure: "Biogas Storage Dome Foundation",
+    supplier: "UltraTech Concrete Solutions",
+    deliveryStatus: "Stock Available",
+    inspectionStatus: "Cube Test Verified (28 Days)"
+  },
+  {
+    id: 3,
+    code: "CIV-BEAM-03",
+    name: "Heavy Universal Columns / I-Beams UC 203x203",
+    category: "Structural Steel",
+    stage: "Gas Upgradation Shed",
+    gradeSpec: "IS 2062 Grade E350",
+    bomRequiredQty: 65,
+    procuredQty: 50,
+    currentStock: 22,
+    allocatedQty: 28,
+    uom: "MT",
+    unitCost: 64000,
+    targetStructure: "Membrane Purification Skid Gantry",
+    supplier: "Jindal Steel & Power Ltd (JSPL)",
+    deliveryStatus: "Stock Available",
+    inspectionStatus: "MTC & Ultrasonic Tested"
+  }
+];
 
 const CivilMaterialsBOM = ({ screenPerm }) => {
-  const [materials, setMaterials] = useState([]);
+  const [materials, setMaterials] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      return INITIAL_CIVIL_MATERIALS;
+    } catch (e) {
+      return INITIAL_CIVIL_MATERIALS;
+    }
+  });
 
   useEffect(() => {
     getCivilMaterials().then(res => {
@@ -83,15 +148,24 @@ const CivilMaterialsBOM = ({ screenPerm }) => {
 
   // Filter
   const filteredMaterials = materials.filter(item => {
-    const matchesSearch =
-      item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.gradeSpec.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.allocatedStructure && item.allocatedStructure.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.supplier && item.supplier.toLowerCase().includes(searchTerm.toLowerCase()));
+    const s = (searchTerm || "").toLowerCase();
+    const code = item.code || item.specCode || "";
+    const name = item.name || item.materialName || "";
+    const grade = item.gradeSpec || "";
+    const struct = item.allocatedStructure || item.targetStructure || item.stage || "";
+    const sup = item.supplier || "";
 
-    const matchesCategory = categoryFilter === "All" || item.category === categoryFilter;
-    const matchesStatus = statusFilter === "All" || item.status === statusFilter;
+    const matchesSearch =
+      code.toLowerCase().includes(s) ||
+      name.toLowerCase().includes(s) ||
+      grade.toLowerCase().includes(s) ||
+      struct.toLowerCase().includes(s) ||
+      sup.toLowerCase().includes(s);
+
+    const itemCat = item.category || item.stage || "";
+    const matchesCategory = categoryFilter === "All" || itemCat === categoryFilter;
+    const itemStatus = item.status || item.deliveryStatus || "";
+    const matchesStatus = statusFilter === "All" || itemStatus === statusFilter;
 
     return matchesSearch && matchesCategory && matchesStatus;
   });
@@ -144,30 +218,43 @@ const CivilMaterialsBOM = ({ screenPerm }) => {
     }
   };
 
-  const handleSaveForm = (e) => {
+  const handleSaveForm = async (e) => {
     e.preventDefault();
     const cleanItem = {
       ...formData,
-      bomRequiredQty: Number(formData.bomRequiredQty),
-      procuredQty: Number(formData.procuredQty),
-      currentStock: Number(formData.currentStock),
-      allocatedQty: Number(formData.allocatedQty),
-      unitCost: Number(formData.unitCost)
+      bomRequiredQty: Number(formData.bomRequiredQty) || 0,
+      procuredQty: Number(formData.procuredQty) || 0,
+      currentStock: Number(formData.currentStock) || 0,
+      allocatedQty: Number(formData.allocatedQty) || 0,
+      unitCost: Number(formData.unitCost) || 0
     };
 
     if (modalMode === "add") {
-      const newItem = { ...cleanItem, id: Date.now() };
-      saveCivilMaterial(cleanItem).then(res => {
-        if (res) setMaterials(prev => [res, ...prev.filter(m => m.id !== newItem.id)]);
-      }).catch(err => console.warn(err));
-      setMaterials([newItem, ...materials]);
+      const tempId = Date.now();
+      const newItem = { ...cleanItem, id: tempId };
+      setMaterials(prev => [newItem, ...prev.filter(m => m.id !== tempId)]);
+      setIsModalOpen(false);
+      try {
+        const res = await saveCivilMaterial(cleanItem);
+        if (res && res.id) {
+          setMaterials(prev => [res, ...prev.filter(m => m.id !== tempId && m.id !== res.id)]);
+        }
+      } catch (err) {
+        console.warn("Backend save warning:", err);
+      }
     } else {
-      saveCivilMaterial(cleanItem, selectedMaterial.id).then(res => {
-        if (res) setMaterials(prev => prev.map(m => m.id === selectedMaterial.id ? res : m));
-      }).catch(err => console.warn(err));
-      setMaterials(materials.map(m => m.id === selectedMaterial.id ? { ...cleanItem, id: selectedMaterial.id } : m));
+      const updated = { ...cleanItem, id: selectedMaterial.id };
+      setMaterials(prev => prev.map(m => m.id === selectedMaterial.id ? updated : m));
+      setIsModalOpen(false);
+      try {
+        const res = await saveCivilMaterial(cleanItem, selectedMaterial.id);
+        if (res && res.id) {
+          setMaterials(prev => prev.map(m => m.id === selectedMaterial.id ? res : m));
+        }
+      } catch (err) {
+        console.warn("Backend update warning:", err);
+      }
     }
-    setIsModalOpen(false);
   };
 
   const handleSaveUsage = (e) => {
@@ -696,22 +783,22 @@ const CivilMaterialsBOM = ({ screenPerm }) => {
                         </span>
                       </td>
                       <td>
-                        <span style={{ fontWeight: "700" }}>{mat.bomRequiredQty.toLocaleString()}</span> {mat.uom}
+                        <span style={{ fontWeight: "700" }}>{(Number(mat.bomRequiredQty) || 0).toLocaleString()}</span> {mat.uom}
                       </td>
                       <td>
                         <div style={{ fontWeight: "600", color: "#0f172a" }}>
-                          {mat.procuredQty.toLocaleString()} {mat.uom}
+                          {(Number(mat.procuredQty) || 0).toLocaleString()} {mat.uom}
                         </div>
                         <div style={{ fontSize: "11px", color: "#64748b" }}>
-                          ₹{(mat.procuredQty * mat.unitCost).toLocaleString("en-IN")}
+                          ₹{((Number(mat.procuredQty) || 0) * (Number(mat.unitCost) || 0)).toLocaleString("en-IN")}
                         </div>
                       </td>
                       <td>
                         <div style={{
                           fontWeight: "800",
-                          color: mat.currentStock <= 0 ? "#dc2626" : mat.currentStock < (mat.bomRequiredQty * 0.15) ? "#d97706" : "#059669"
+                          color: (Number(mat.currentStock) || 0) <= 0 ? "#dc2626" : (Number(mat.currentStock) || 0) < ((Number(mat.bomRequiredQty) || 0) * 0.15) ? "#d97706" : "#059669"
                         }}>
-                          {mat.currentStock.toLocaleString()} {mat.uom}
+                          {(Number(mat.currentStock) || 0).toLocaleString()} {mat.uom}
                         </div>
                         <div style={{ fontSize: "11px", color: "#64748b" }}>
                           {mat.yardLocation}

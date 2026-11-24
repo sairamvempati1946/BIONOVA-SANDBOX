@@ -22,12 +22,92 @@ import {
 import { getFasteners, saveFastener, deleteFastener } from "./inventoryApi";
 
 const STORAGE_KEY = "bionova_fasteners_hardware_v1";
-try { const _raw = localStorage.getItem(STORAGE_KEY); if (_raw && (_raw.includes("INV-") || _raw.includes("CIV-") || _raw.includes("FST-") || _raw.includes("BN-") || _raw.includes("UltraTech") || _raw.includes("Neuman"))) { localStorage.removeItem(STORAGE_KEY); } } catch(e){}
 
-const INITIAL_FASTENERS = [];
+const INITIAL_FASTENERS = [
+  {
+    id: 1,
+    sku: "FST-BOLT-109-01",
+    name: "M20 x 80mm High-Tensile Flange Hex Bolts",
+    category: "High-Tensile Bolts",
+    grade: "Grade 10.9",
+    threadSpec: "M20 x 2.5mm Pitch",
+    coating: "PTFE / Teflon Coated",
+    batchNo: "BAT-2026-FST09",
+    heatNo: "HT-77210",
+    mtcCertNo: "MTC-EN10204-8841",
+    mtcFileName: "MTC_M20_Grade10.9_Cert.pdf",
+    tensileStrength: "1040 MPa",
+    yieldStrength: "940 MPa",
+    application: "Digester Gas Dome High-Pressure Flanges",
+    location: "Rack B-04 / Bin 12",
+    currentStock: 1250,
+    reorderThreshold: 300,
+    uom: "Nos",
+    unitCost: 85,
+    supplier: "Sundram Fasteners Ltd",
+    notes: "Corrosion resistant PTFE coating for aggressive H2S environments."
+  },
+  {
+    id: 2,
+    sku: "FST-STUD-B7-02",
+    name: "ASTM A193 Grade B7 Continuous Thread Stud Bolts",
+    category: "Stud Bolts",
+    grade: "ASTM A193 B7",
+    threadSpec: "M24 x 3.0mm Pitch (Length 180mm)",
+    coating: "Hot-Dip Galvanized",
+    batchNo: "BAT-2026-STB12",
+    heatNo: "HT-91045",
+    mtcCertNo: "MTC-EN10204-9122",
+    mtcFileName: "MTC_A193_B7_Studs.pdf",
+    tensileStrength: "860 MPa",
+    yieldStrength: "720 MPa",
+    application: "Biogas Compressor Skid Anchor Tie-Downs",
+    location: "Rack A-02 / Bin 05",
+    currentStock: 480,
+    reorderThreshold: 150,
+    uom: "Nos",
+    unitCost: 210,
+    supplier: "Unbrako Fasteners India",
+    notes: "High strength alloy steel for elevated temperature & pressure service."
+  },
+  {
+    id: 3,
+    sku: "FST-WSH-316-03",
+    name: "SS 316 Acid-Resistant Heavy Plain Washers",
+    category: "Industrial Washers",
+    grade: "SS 316",
+    threadSpec: "M20 ID / 37mm OD (3mm Thick)",
+    coating: "Passivated / Pickled",
+    batchNo: "BAT-2026-WSH03",
+    heatNo: "HT-33918",
+    mtcCertNo: "MTC-EN10204-3319",
+    mtcFileName: "MTC_SS316_Washers.pdf",
+    tensileStrength: "620 MPa",
+    yieldStrength: "290 MPa",
+    application: "Slurry Pipeline & Acid Dosing Pump Assemblies",
+    location: "Rack C-01 / Bin 22",
+    currentStock: 3500,
+    reorderThreshold: 800,
+    uom: "Nos",
+    unitCost: 18,
+    supplier: "Viraj Profiles Ltd",
+    notes: "Austenitic stainless steel with molybdenum for high corrosion resistance."
+  }
+];
 
 const FastenersHardware = ({ screenPerm }) => {
-  const [fasteners, setFasteners] = useState([]);
+  const [fasteners, setFasteners] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      return INITIAL_FASTENERS;
+    } catch (e) {
+      return INITIAL_FASTENERS;
+    }
+  });
 
   useEffect(() => {
     getFasteners().then(res => {
@@ -73,25 +153,33 @@ const FastenersHardware = ({ screenPerm }) => {
   }, [fasteners]);
 
   // KPIs
-  const totalStockCount = fasteners.reduce((acc, it) => acc + it.currentStock, 0);
-  const totalValuation = fasteners.reduce((acc, it) => acc + (it.currentStock * it.unitCost), 0);
-  const lowStockCount = fasteners.filter(it => it.currentStock <= it.reorderThreshold).length;
-  const mtcVerifiedCount = fasteners.filter(it => it.mtcCertNo).length;
+  const totalStockCount = fasteners.reduce((acc, it) => acc + (Number(it.currentStock || it.inStock || 0)), 0);
+  const totalValuation = fasteners.reduce((acc, it) => acc + ((Number(it.currentStock || it.inStock || 0)) * (Number(it.unitCost || 0))), 0);
+  const lowStockCount = fasteners.filter(it => (Number(it.currentStock || it.inStock || 0)) <= (Number(it.reorderThreshold || it.reorderLevel || 0))).length;
+  const mtcVerifiedCount = fasteners.filter(it => it.mtcCertNo || it.standardCert).length;
 
   // Filter
   const filteredFasteners = fasteners.filter(item => {
+    const s = (searchTerm || "").toLowerCase();
+    const sku = item.sku || item.itemCode || "";
+    const name = item.name || item.description || "";
+    const thread = item.threadSpec || item.size || "";
+    const batch = item.batchNo || "";
+    const mtc = item.mtcCertNo || item.standardCert || "";
+    const app = item.application || "";
+
     const matchesSearch =
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.threadSpec.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.batchNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.mtcCertNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.application && item.application.toLowerCase().includes(searchTerm.toLowerCase()));
+      sku.toLowerCase().includes(s) ||
+      name.toLowerCase().includes(s) ||
+      thread.toLowerCase().includes(s) ||
+      batch.toLowerCase().includes(s) ||
+      mtc.toLowerCase().includes(s) ||
+      app.toLowerCase().includes(s);
 
-    const matchesGrade = gradeFilter === "All" || item.grade.includes(gradeFilter);
-    const matchesCoating = coatingFilter === "All" || item.coating.includes(coatingFilter);
+    const matchesGrade = gradeFilter === "All" || (item.grade && item.grade.includes(gradeFilter));
+    const matchesCoating = coatingFilter === "All" || (item.coating && item.coating.includes(coatingFilter));
 
-    return matchesSearch && matchesGrade && matchesCoating;
+    return matchesSearch && (matchesGrade !== undefined ? matchesGrade : true) && (matchesCoating !== undefined ? matchesCoating : true);
   });
 
   const handleOpenAdd = () => {
@@ -139,28 +227,41 @@ const FastenersHardware = ({ screenPerm }) => {
     }
   };
 
-  const handleSaveForm = (e) => {
+  const handleSaveForm = async (e) => {
     e.preventDefault();
     const cleanItem = {
       ...formData,
-      currentStock: Number(formData.currentStock),
-      reorderThreshold: Number(formData.reorderThreshold),
-      unitCost: Number(formData.unitCost)
+      currentStock: Number(formData.currentStock) || 0,
+      reorderThreshold: Number(formData.reorderThreshold) || 0,
+      unitCost: Number(formData.unitCost) || 0
     };
 
     if (modalMode === "add") {
-      const newItem = { ...cleanItem, id: Date.now() };
-      saveFastener(cleanItem).then(res => {
-        if (res) setFasteners(prev => [res, ...prev.filter(f => f.id !== newItem.id)]);
-      }).catch(err => console.warn(err));
-      setFasteners([newItem, ...fasteners]);
+      const tempId = Date.now();
+      const newItem = { ...cleanItem, id: tempId };
+      setFasteners(prev => [newItem, ...prev.filter(f => f.id !== tempId)]);
+      setIsModalOpen(false);
+      try {
+        const res = await saveFastener(cleanItem);
+        if (res && res.id) {
+          setFasteners(prev => [res, ...prev.filter(f => f.id !== tempId && f.id !== res.id)]);
+        }
+      } catch (err) {
+        console.warn("Backend save warning:", err);
+      }
     } else {
-      saveFastener(cleanItem, selectedFastener.id).then(res => {
-        if (res) setFasteners(prev => prev.map(f => f.id === selectedFastener.id ? res : f));
-      }).catch(err => console.warn(err));
-      setFasteners(fasteners.map(f => f.id === selectedFastener.id ? { ...cleanItem, id: selectedFastener.id } : f));
+      const updated = { ...cleanItem, id: selectedFastener.id };
+      setFasteners(prev => prev.map(f => f.id === selectedFastener.id ? updated : f));
+      setIsModalOpen(false);
+      try {
+        const res = await saveFastener(cleanItem, selectedFastener.id);
+        if (res && res.id) {
+          setFasteners(prev => prev.map(f => f.id === selectedFastener.id ? res : f));
+        }
+      } catch (err) {
+        console.warn("Backend update warning:", err);
+      }
     }
-    setIsModalOpen(false);
   };
 
   const handleExportCSV = () => {
@@ -668,10 +769,10 @@ const FastenersHardware = ({ screenPerm }) => {
                       </td>
                       <td>
                         <span className="inv-badge-category" style={{
-                          backgroundColor: item.grade.includes("10.9") || item.grade.includes("12.9") ? "#fef3c7" : item.grade.includes("316") ? "#ecfdf5" : "#eff6ff",
-                          color: item.grade.includes("10.9") || item.grade.includes("12.9") ? "#b45309" : item.grade.includes("316") ? "#047857" : "#1d4ed8"
+                          backgroundColor: (item.grade && (item.grade.includes("10.9") || item.grade.includes("12.9"))) ? "#fef3c7" : (item.grade && item.grade.includes("316")) ? "#ecfdf5" : "#eff6ff",
+                          color: (item.grade && (item.grade.includes("10.9") || item.grade.includes("12.9"))) ? "#b45309" : (item.grade && item.grade.includes("316")) ? "#047857" : "#1d4ed8"
                         }}>
-                          {item.grade}
+                          {item.grade || "Standard"}
                         </span>
                       </td>
                       <td>
@@ -690,10 +791,10 @@ const FastenersHardware = ({ screenPerm }) => {
                       </td>
                       <td>
                         <div style={{ fontWeight: "800", color: isLow ? "#dc2626" : "#059669" }}>
-                          {item.currentStock.toLocaleString()} {item.uom}
+                          {(Number(item.currentStock) || 0).toLocaleString()} {item.uom}
                         </div>
                         <div style={{ fontSize: "11px", color: "#64748b" }}>
-                          Min: {item.reorderThreshold.toLocaleString()}
+                          Min: {(Number(item.reorderThreshold) || 0).toLocaleString()}
                         </div>
                       </td>
                       <td>

@@ -202,6 +202,9 @@ const EquipmentWarranty = ({ screenPerm }) => {
       return w;
     });
     setWarranties(updated);
+    setIsClaimModalOpen(false);
+  };
+    }));
     alert(`Warranty Claim officially lodged with OEM (${selectedMachine.oem})! Ticket #CLM-${Date.now().toString().slice(-6)} created.`);
     setIsClaimModalOpen(false);
   };

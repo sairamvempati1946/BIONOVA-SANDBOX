@@ -68,6 +68,122 @@ export const formatToDDMMYYYY = (val) => {
   return str;
 };
 
+// Utility: Format date-time strictly into DD-MM-YYYY hh:mm AM/PM format
+export const formatToDDMMYYYYTime = (val) => {
+  if (!val) return "";
+  const str = String(val).trim();
+  if (/^\d{2}-\d{2}-\d{4}\s+\d{1,2}:\d{2}(\s*(AM|PM|am|pm))?$/.test(str)) {
+    return str;
+  }
+  const d = new Date(val);
+  if (!isNaN(d.getTime())) {
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const strHours = String(hours).padStart(2, "0");
+    return `${day}-${month}-${year} ${strHours}:${minutes} ${ampm}`;
+  }
+  return str;
+};
+
+// Utility: Parse DD-MM-YYYY hh:mm AM/PM into a valid Date object
+export const parseCustomDateTime = (val) => {
+  if (!val) return new Date();
+  if (val instanceof Date) return val;
+  const str = String(val).trim();
+  const match = str.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+  if (match) {
+    const d = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10) - 1;
+    const y = parseInt(match[3], 10);
+    let h = parseInt(match[4], 10);
+    const min = parseInt(match[5], 10);
+    const ampm = (match[6] || "").toUpperCase();
+    if (ampm === "PM" && h < 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    const dateObj = new Date(y, m, d, h, min, 0);
+    if (!isNaN(dateObj.getTime())) return dateObj;
+  }
+  const fallback = new Date(val);
+  return isNaN(fallback.getTime()) ? new Date() : fallback;
+};
+
+// Utility: Generate sequential Incident Ticket # based on existing records
+export const generateNextIncidentTicket = (incidentsList = []) => {
+  const currentYear = new Date().getFullYear();
+  let maxSeq = 0;
+  incidentsList.forEach((item) => {
+    const code = item.ticketNumber || item.ticket_number || "";
+    const match = code.match(/INC-(\d{4})-(\d+)/i);
+    if (match) {
+      const year = parseInt(match[1], 10);
+      const seq = parseInt(match[2], 10);
+      if (year === currentYear && !isNaN(seq) && seq > maxSeq) {
+        maxSeq = seq;
+      }
+    } else {
+      const simpleMatch = code.match(/INC-(\d+)/i);
+      if (simpleMatch) {
+        const seq = parseInt(simpleMatch[1], 10);
+        if (!isNaN(seq) && seq > maxSeq) {
+          maxSeq = seq;
+        }
+      }
+    }
+  });
+  return `INC-${currentYear}-${String(maxSeq + 1).padStart(4, "0")}`;
+};
+
+// Utility: Generate sequential Service Log Code in format [PREFIX]-[ASSET/TYPE]-[YYYYMM]-[SEQ]
+export const generateNextServiceLogCode = (costLogsList = [], selectedAssetName = "") => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const yyyymm = `${year}${month}`;
+
+  // Determine [ASSET/TYPE] based on selected asset name/category
+  let assetType = "AST";
+  const nameLower = (selectedAssetName || "").toLowerCase();
+  if (nameLower.includes("tractor") || nameLower.includes("harvest") || nameLower.includes("vehicle")) {
+    assetType = "TRC";
+  } else if (nameLower.includes("digester") || nameLower.includes("cstr") || nameLower.includes("agitator")) {
+    assetType = "DIG";
+  } else if (nameLower.includes("gas") || nameLower.includes("upgradation") || nameLower.includes("compressor") || nameLower.includes("dispenser")) {
+    assetType = "GAS";
+  } else if (nameLower.includes("cold") || nameLower.includes("storage") || nameLower.includes("chiller") || nameLower.includes("refrigeration")) {
+    assetType = "CLD";
+  } else if (nameLower.includes("pump")) {
+    assetType = "PMP";
+  } else if (nameLower.includes("boiler") || nameLower.includes("heater")) {
+    assetType = "BLR";
+  } else if (nameLower.includes("scrubber") || nameLower.includes("filter")) {
+    assetType = "FLT";
+  } else if (nameLower.includes("turbine") || nameLower.includes("generator")) {
+    assetType = "GEN";
+  }
+
+  // Find max sequence from DB / existing logs (handles both legacy CST-2026-0004 and SRV-TRC-202611-0005)
+  let maxSeq = 0;
+  costLogsList.forEach((item) => {
+    const code = item.logNumber || item.log_number || "";
+    const match = code.match(/(\d+)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxSeq) {
+        maxSeq = num;
+      }
+    }
+  });
+
+  const nextSeq = String(maxSeq + 1).padStart(4, "0");
+  return `SRV-${assetType}-${yyyymm}-${nextSeq}`;
+};
+
 // Utility: Convert DD-MM-YYYY to YYYY-MM-DD for native HTML5 date picker sync
 export const parseDDMMYYYYToISO = (val) => {
   if (!val) return "";
@@ -80,6 +196,392 @@ export const parseDDMMYYYYToISO = (val) => {
     return str.split("T")[0];
   }
   return str;
+};
+
+// CustomDateTimeInput: Clean date-time picker that does not get stuck,
+// closes on outside click or "Done", disallows future dates/times,
+// and formats strictly as DD-MM-YYYY hh:mm AM/PM
+const CustomDateTimeInput = ({ value, onChange, required, hasError }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = React.useRef(null);
+
+  const now = new Date();
+  const currentDate = value ? parseCustomDateTime(value) : now;
+
+  const [viewYear, setViewYear] = useState(currentDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(currentDate.getMonth());
+  const [selectedDay, setSelectedDay] = useState(currentDate.getDate());
+
+  let initialHours = currentDate.getHours();
+  const initialAmPm = initialHours >= 12 ? "PM" : "AM";
+  initialHours = initialHours % 12 || 12;
+
+  const [hours, setHours] = useState(initialHours);
+  const [minutes, setMinutes] = useState(currentDate.getMinutes());
+  const [ampm, setAmPm] = useState(initialAmPm);
+
+  useEffect(() => {
+    if (value) {
+      const d = parseCustomDateTime(value);
+      setViewYear(d.getFullYear());
+      setViewMonth(d.getMonth());
+      setSelectedDay(d.getDate());
+      let h = d.getHours();
+      setAmPm(h >= 12 ? "PM" : "AM");
+      setHours(h % 12 || 12);
+      setMinutes(d.getMinutes());
+    }
+  }, [value]);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("touchstart", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [isOpen]);
+
+  const emitDateTime = (y, m, d, h, min, ap) => {
+    let finalHour = h;
+    if (ap === "PM" && finalHour < 12) finalHour += 12;
+    if (ap === "AM" && finalHour === 12) finalHour = 0;
+
+    let targetDate = new Date(y, m, d, finalHour, min, 0);
+    const rightNow = new Date();
+
+    if (targetDate.getTime() > rightNow.getTime()) {
+      targetDate = rightNow;
+      y = targetDate.getFullYear();
+      m = targetDate.getMonth();
+      d = targetDate.getDate();
+      let th = targetDate.getHours();
+      ap = th >= 12 ? "PM" : "AM";
+      h = th % 12 || 12;
+      min = targetDate.getMinutes();
+
+      setViewYear(y);
+      setViewMonth(m);
+      setSelectedDay(d);
+      setHours(h);
+      setMinutes(min);
+      setAmPm(ap);
+    }
+
+    const dayStr = String(d).padStart(2, "0");
+    const monthStr = String(m + 1).padStart(2, "0");
+    const hStr = String(h).padStart(2, "0");
+    const minStr = String(min).padStart(2, "0");
+    onChange(`${dayStr}-${monthStr}-${y} ${hStr}:${minStr} ${ap}`);
+  };
+
+  const prevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  };
+
+  const nextMonth = () => {
+    const isCurrentMonthOrFuture =
+      viewYear > now.getFullYear() ||
+      (viewYear === now.getFullYear() && viewMonth >= now.getMonth());
+    if (isCurrentMonthOrFuture) return;
+
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+
+  const isNextMonthDisabled =
+    viewYear > now.getFullYear() ||
+    (viewYear === now.getFullYear() && viewMonth >= now.getMonth());
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
+  const startOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const handleSelectDay = (day) => {
+    setSelectedDay(day);
+    emitDateTime(viewYear, viewMonth, day, hours, minutes, ampm);
+  };
+
+  const handleTimeChange = (newH, newMin, newAp) => {
+    setHours(newH);
+    setMinutes(newMin);
+    setAmPm(newAp);
+    emitDateTime(viewYear, viewMonth, selectedDay, newH, newMin, newAp);
+  };
+
+  const handleSetCurrentTime = () => {
+    const cur = new Date();
+    const y = cur.getFullYear();
+    const m = cur.getMonth();
+    const d = cur.getDate();
+    let h = cur.getHours();
+    const ap = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    const min = cur.getMinutes();
+
+    setViewYear(y);
+    setViewMonth(m);
+    setSelectedDay(d);
+    setHours(h);
+    setMinutes(min);
+    setAmPm(ap);
+
+    emitDateTime(y, m, d, h, min, ap);
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", width: "100%" }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "9px 12px",
+          backgroundColor: "#ffffff",
+          border: hasError ? "1.5px solid #ef4444" : "1px solid #cbd5e1",
+          borderRadius: "8px",
+          cursor: "pointer",
+          fontSize: "14px",
+          color: value ? "#0f172a" : "#94a3b8",
+          userSelect: "none"
+        }}
+      >
+        <span style={{ fontWeight: "600", fontFamily: "inherit" }}>
+          {value || "DD-MM-YYYY hh:mm AM/PM"}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#64748b" }}>
+          <Clock size={16} />
+          <Calendar size={16} />
+        </div>
+      </div>
+
+      {isOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            zIndex: 1200,
+            background: "#ffffff",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 14px 30px rgba(0,0,0,0.18)",
+            padding: "16px",
+            width: "320px",
+            fontSize: "13px"
+          }}
+        >
+          {/* Calendar Header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+            <span style={{ fontWeight: "700", color: "#0f172a", fontSize: "14px" }}>
+              {monthNames[viewMonth]}, {viewYear}
+            </span>
+            <div style={{ display: "flex", gap: "4px" }}>
+              <button
+                type="button"
+                onClick={prevMonth}
+                style={{
+                  background: "#f1f5f9",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "4px 8px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                  color: "#334155"
+                }}
+              >
+                &lt;
+              </button>
+              <button
+                type="button"
+                onClick={nextMonth}
+                disabled={isNextMonthDisabled}
+                style={{
+                  background: isNextMonthDisabled ? "#f8fafc" : "#f1f5f9",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "4px 8px",
+                  cursor: isNextMonthDisabled ? "not-allowed" : "pointer",
+                  fontWeight: "bold",
+                  color: isNextMonthDisabled ? "#cbd5e1" : "#334155"
+                }}
+              >
+                &gt;
+              </button>
+            </div>
+          </div>
+
+          {/* Weekday Labels */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", textAlign: "center", marginBottom: "6px" }}>
+            {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
+              <span key={d} style={{ fontSize: "11px", fontWeight: "700", color: "#64748b" }}>{d}</span>
+            ))}
+          </div>
+
+          {/* Calendar Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", textAlign: "center", marginBottom: "14px" }}>
+            {Array.from({ length: startOffset }).map((_, i) => (
+              <span key={`empty-${i}`} />
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const isToday =
+                viewYear === now.getFullYear() &&
+                viewMonth === now.getMonth() &&
+                day === now.getDate();
+              const isFuture =
+                viewYear > now.getFullYear() ||
+                (viewYear === now.getFullYear() && viewMonth > now.getMonth()) ||
+                (viewYear === now.getFullYear() && viewMonth === now.getMonth() && day > now.getDate());
+              const isSelected =
+                day === selectedDay &&
+                viewYear === parseCustomDateTime(value).getFullYear() &&
+                viewMonth === parseCustomDateTime(value).getMonth();
+
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  disabled={isFuture}
+                  onClick={() => handleSelectDay(day)}
+                  style={{
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "6px 0",
+                    background: isSelected ? "#dc2626" : isToday ? "#fee2e2" : "transparent",
+                    color: isFuture ? "#cbd5e1" : isSelected ? "#ffffff" : isToday ? "#dc2626" : "#1e293b",
+                    fontWeight: isSelected || isToday ? "700" : "500",
+                    cursor: isFuture ? "not-allowed" : "pointer",
+                    fontSize: "12px"
+                  }}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Time Picker Controls */}
+          <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "12px", marginBottom: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <span style={{ fontSize: "12px", fontWeight: "700", color: "#475569" }}>Time:</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <select
+                  value={hours}
+                  onChange={(e) => handleTimeChange(parseInt(e.target.value, 10), minutes, ampm)}
+                  style={{ padding: "4px 6px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px", fontWeight: "600" }}
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+                    <option key={h} value={h}>{String(h).padStart(2, "0")}</option>
+                  ))}
+                </select>
+                <span style={{ fontWeight: "700", color: "#64748b" }}>:</span>
+                <select
+                  value={minutes}
+                  onChange={(e) => handleTimeChange(hours, parseInt(e.target.value, 10), ampm)}
+                  style={{ padding: "4px 6px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px", fontWeight: "600" }}
+                >
+                  {Array.from({ length: 60 }, (_, i) => i).map((m) => (
+                    <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
+                  ))}
+                </select>
+                <div style={{ display: "flex", borderRadius: "6px", overflow: "hidden", border: "1px solid #cbd5e1" }}>
+                  <button
+                    type="button"
+                    onClick={() => handleTimeChange(hours, minutes, "AM")}
+                    style={{
+                      border: "none",
+                      padding: "4px 8px",
+                      fontSize: "11px",
+                      fontWeight: "700",
+                      background: ampm === "AM" ? "#dc2626" : "#f8fafc",
+                      color: ampm === "AM" ? "#ffffff" : "#475569",
+                      cursor: "pointer"
+                    }}
+                  >
+                    AM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTimeChange(hours, minutes, "PM")}
+                    style={{
+                      border: "none",
+                      padding: "4px 8px",
+                      fontSize: "11px",
+                      fontWeight: "700",
+                      background: ampm === "PM" ? "#dc2626" : "#f8fafc",
+                      color: ampm === "PM" ? "#ffffff" : "#475569",
+                      cursor: "pointer"
+                    }}
+                  >
+                    PM
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons: Set Current Time & Done */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #f1f5f9", paddingTop: "10px" }}>
+            <button
+              type="button"
+              onClick={handleSetCurrentTime}
+              style={{
+                border: "none",
+                background: "#f1f5f9",
+                color: "#334155",
+                borderRadius: "6px",
+                padding: "6px 12px",
+                fontSize: "12px",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              Current Time
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              style={{
+                border: "none",
+                background: "#dc2626",
+                color: "#ffffff",
+                borderRadius: "6px",
+                padding: "6px 16px",
+                fontSize: "12px",
+                fontWeight: "700",
+                cursor: "pointer"
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // CustomDateInput: Guaranteed DD-MM-YYYY display on every device/OS/browser
@@ -208,6 +710,7 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
   // Custom UI Dialog & Modal States
   const [assetErrors, setAssetErrors] = useState({});
   const [scheduleErrors, setScheduleErrors] = useState({});
+  const [incidentErrors, setIncidentErrors] = useState({});
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, title: "", message: "", onConfirm: null });
   const [viewingItem, setViewingItem] = useState(null);
 
@@ -244,13 +747,13 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
     ticketNumber: "",
     facility: "",
     assetName: "",
-    reportedTime: new Date().toISOString().slice(0, 16),
-    severity: "Critical (Plant Trip Risk)",
+    reportedTime: formatToDDMMYYYYTime(new Date()),
+    severity: "",
     symptomDescription: "",
-    downtimeHours: 0,
+    downtimeHours: "",
     rootCause: "",
     correctiveAction: "",
-    status: "Open / Under Repair"
+    status: "In Progress / Under Repair"
   });
 
   const [costForm, setCostForm] = useState({
@@ -504,6 +1007,11 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
       errors.nextDueDate = "Next Scheduled Due Date is required";
     }
 
+    // 5. Mandatory Checklist Steps (SOP)
+    if (!scheduleForm.checklistItems || !scheduleForm.checklistItems.trim()) {
+      errors.checklistItems = "Mandatory Checklist Steps (SOP) are required";
+    }
+
     if (Object.keys(errors).length > 0) {
       setScheduleErrors(errors);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -525,17 +1033,18 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
 
   // --- Incident Operations ---
   const handleOpenCreateIncident = () => {
-    const nextSeq = String(incidents.length + 1).padStart(4, "0");
+    setIncidentErrors({});
+    const nextTicket = generateNextIncidentTicket(incidents);
     setIncidentForm({
-      ticketNumber: `INC-2026-${nextSeq}`,
+      ticketNumber: nextTicket,
       facility: plants[0]?.pltNm || plants[0]?.plantNm || "20 TPD CBG Plant",
-      assetName: assets[0]?.name || "Primary CSTR Biogas Digester Agitator #2",
-      reportedTime: new Date().toISOString().slice(0, 16),
-      severity: "Major (Process Bottleneck)",
-      symptomDescription: "High mechanical vibration detected on agitator gear unit.",
-      downtimeHours: 2.5,
-      rootCause: "Bearing lubrication deterioration due to continuous heavy solids loading.",
-      correctiveAction: "Flushed gearbox, installed high-temp synthetic gear oil, and re-torqued motor bolts.",
+      assetName: "",
+      reportedTime: formatToDDMMYYYYTime(new Date()),
+      severity: "",
+      symptomDescription: "",
+      downtimeHours: "",
+      rootCause: "",
+      correctiveAction: "",
       status: "In Progress / Under Repair"
     });
     setEditingItem(null);
@@ -543,26 +1052,99 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const handleOpenEditIncident = (incident) => {
+    setIncidentErrors({});
+    setEditingItem(incident);
+    setIncidentForm({
+      ticketNumber: incident.ticketNumber || incident.ticket_number || "",
+      facility: incident.facility || plants[0]?.pltNm || plants[0]?.plantNm || "20 TPD CBG Plant",
+      assetName: incident.assetName || incident.asset_name || "",
+      reportedTime: formatToDDMMYYYYTime(incident.reportedTime || incident.reported_time || new Date()),
+      severity: incident.severity || "",
+      symptomDescription: incident.symptomDescription || incident.symptom_description || "",
+      downtimeHours: incident.downtimeHours !== undefined ? incident.downtimeHours : "",
+      rootCause: incident.rootCause || incident.root_cause || "",
+      correctiveAction: incident.correctiveAction || incident.corrective_action || "",
+      status: incident.status || "In Progress / Under Repair"
+    });
+    setFormMode("create_incident");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const handleSaveIncident = async (e) => {
     e.preventDefault();
+    const errors = {};
+
+    // 1. Ticket Number
+    if (!incidentForm.ticketNumber || !incidentForm.ticketNumber.trim()) {
+      errors.ticketNumber = "Incident Ticket # is required";
+    }
+
+    // 2. Affected Machinery Asset
+    if (!incidentForm.assetName || !incidentForm.assetName.trim()) {
+      errors.assetName = "Please select an Affected Machinery Asset";
+    }
+
+    // 3. Severity Level
+    if (!incidentForm.severity || !incidentForm.severity.trim()) {
+      errors.severity = "Please select a Severity Level";
+    }
+
+    // 4. Incident Timestamp (strictly cannot be in the future)
+    if (!incidentForm.reportedTime || !incidentForm.reportedTime.trim()) {
+      errors.reportedTime = "Incident Timestamp is required";
+    } else {
+      const parsedDate = parseCustomDateTime(incidentForm.reportedTime);
+      const rightNow = new Date();
+      if (parsedDate.getTime() > rightNow.getTime() + 60000) {
+        errors.reportedTime = "Incident Timestamp cannot be in the future. Please select current or past date & time.";
+      }
+    }
+
+    // 5. Downtime Logged (Hours) (must be > 0)
+    const dt = parseFloat(incidentForm.downtimeHours);
+    if (incidentForm.downtimeHours === "" || isNaN(dt) || dt <= 0) {
+      errors.downtimeHours = "Downtime Logged must be greater than 0 hours (0 or negative is not accepted)";
+    }
+
+    // 6. Symptom Description
+    if (!incidentForm.symptomDescription || !incidentForm.symptomDescription.trim()) {
+      errors.symptomDescription = "Failure symptom & breakdown details are required";
+    }
+
+    // 7. RCA & Corrective Action
+    if (!incidentForm.correctiveAction || !incidentForm.correctiveAction.trim()) {
+      errors.correctiveAction = "Root Cause Analysis (RCA) & Corrective Action taken are required";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setIncidentErrors(errors);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    setIncidentErrors({});
     const payload = {
       ...incidentForm,
-      id: editingItem ? editingItem.id : undefined
+      id: editingItem ? editingItem.id : undefined,
+      downtimeHours: parseFloat(incidentForm.downtimeHours) || 0
     };
     await saveBreakdownIncident(payload);
     await loadAllData();
     setFormMode(null);
+    setEditingItem(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // --- Cost Log Operations ---
   const handleOpenCreateCost = () => {
-    const nextSeq = String(costLogs.length + 1).padStart(4, "0");
+    const initialAsset = assets[0]?.name || "Heavy-Duty Harvesting Biomass Tractor";
+    const nextCode = generateNextServiceLogCode(costLogs, initialAsset);
     setCostForm({
-      logNumber: `CST-2026-${nextSeq}`,
-      assetName: assets[0]?.name || "Heavy-Duty Harvesting Biomass Tractor",
+      logNumber: nextCode,
+      assetName: initialAsset,
       facility: plants[0]?.pltNm || plants[0]?.plantNm || "20 TPD CBG Plant",
-      serviceDate: new Date().toISOString().split("T")[0],
+      serviceDate: formatToDDMMYYYY(new Date()),
       serviceNature: "Emergency Breakdown Repair",
       sparesConsumed: "High-Pressure Hydraulic Hose & Coupling O-Rings",
       sparesCost: 18500,
@@ -577,17 +1159,45 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const handleOpenEditCost = (costLog) => {
+    setEditingItem(costLog);
+    setCostForm({
+      logNumber: costLog.logNumber || costLog.log_number || "",
+      assetName: costLog.assetName || costLog.asset_name || "",
+      facility: costLog.facility || plants[0]?.pltNm || plants[0]?.plantNm || "20 TPD CBG Plant",
+      serviceDate: formatToDDMMYYYY(costLog.serviceDate || costLog.service_date || new Date()),
+      serviceNature: costLog.serviceNature || costLog.service_nature || "Emergency Breakdown Repair",
+      sparesConsumed: costLog.sparesConsumed || costLog.spares_consumed || "",
+      sparesCost: parseFloat(costLog.sparesCost ?? costLog.spares_cost ?? 0) || 0,
+      laborCost: parseFloat(costLog.laborCost ?? costLog.labor_cost ?? 0) || 0,
+      externalVendorFee: parseFloat(costLog.externalVendorFee ?? costLog.external_vendor_fee ?? 0) || 0,
+      servicingVendor: costLog.servicingVendor || costLog.servicing_vendor || "",
+      invoiceRef: costLog.invoiceRef || costLog.invoice_ref || "",
+      warrantyCovered: Boolean(costLog.warrantyCovered ?? costLog.warranty_covered ?? false)
+    });
+    setFormMode("create_cost");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const handleSaveCost = async (e) => {
     e.preventDefault();
-    const totalCost = Number(costForm.sparesCost || 0) + Number(costForm.laborCost || 0) + Number(costForm.externalVendorFee || 0);
+    const spares = Number(costForm.sparesCost || 0);
+    const labor = Number(costForm.laborCost || 0);
+    const vendorFee = Number(costForm.externalVendorFee || 0);
+    const totalCost = spares + labor + vendorFee;
     const payload = {
       ...costForm,
       id: editingItem ? editingItem.id : undefined,
-      totalCost
+      sparesCost: spares,
+      laborCost: labor,
+      externalVendorFee: vendorFee,
+      totalCost,
+      serviceDate: formatToDDMMYYYY(costForm.serviceDate)
     };
     await saveServicingCostLog(payload);
     await loadAllData();
     setFormMode(null);
+    setEditingItem(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -614,7 +1224,17 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
   const totalAssetsCount = assets.length;
   const activeBreakdownsCount = incidents.filter(i => i.status !== "Closed" && i.status !== "Resolved").length;
   const upcomingPmCount = schedules.filter(s => s.status === "Upcoming" || s.status === "Due").length;
-  const totalMaintenanceCost = costLogs.reduce((acc, c) => acc + Number(c.totalCost || 0), 0);
+  const totalMaintenanceCost = costLogs.reduce((acc, c) => {
+    const spares = Number(c.sparesCost ?? c.spares_cost ?? 0);
+    const labor = Number(c.laborCost ?? c.labor_cost ?? 0);
+    const vendorFee = Number(c.externalVendorFee ?? c.external_vendor_fee ?? 0);
+    const tc = Number(
+      c.totalCost !== undefined && c.totalCost !== null && Number(c.totalCost) > 0
+        ? c.totalCost
+        : spares + labor + vendorFee
+    );
+    return acc + tc;
+  }, 0);
 
   if (!screenPerm.canView) {
     return (
@@ -1084,13 +1704,23 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                   </div>
 
                   <div className="sco-form-group col-span-full">
-                    <label>Mandatory Checklist Steps (SOP)</label>
+                    <label>Mandatory Checklist Steps (SOP) <span className="required">*</span></label>
                     <textarea
                       rows="3"
+                      required
                       value={scheduleForm.checklistItems}
-                      onChange={(e) => setScheduleForm({ ...scheduleForm, checklistItems: e.target.value })}
+                      onChange={(e) => {
+                        setScheduleForm({ ...scheduleForm, checklistItems: e.target.value });
+                        if (scheduleErrors.checklistItems) setScheduleErrors({ ...scheduleErrors, checklistItems: null });
+                      }}
+                      style={scheduleErrors.checklistItems ? { borderColor: "#dc2626" } : {}}
                       placeholder="1. Inspect oil seals & lubricant levels&#10;2. Calibrate pressure transducer transmitters&#10;3. Check gas sensor alarms & valves"
                     ></textarea>
+                    {scheduleErrors.checklistItems && (
+                      <span style={{ color: "#dc2626", fontSize: "11.5px", marginTop: "3px", display: "block" }}>
+                        {scheduleErrors.checklistItems}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1112,9 +1742,45 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
           {formMode === "create_incident" && (
             <div className="sco-form-card" style={{ borderColor: "#fca5a5" }}>
               <div className="sco-form-title" style={{ color: "#dc2626" }}>
-                <span>Log Unscheduled Breakdown Incident</span>
-                <button onClick={() => setFormMode(null)} className="sco-btn-icon"><X size={18} /></button>
+                <span>{editingItem ? "Edit Breakdown Incident Log" : "Log Unscheduled Breakdown Incident"}</span>
+                <button
+                  onClick={() => {
+                    setFormMode(null);
+                    setEditingItem(null);
+                    setIncidentErrors({});
+                  }}
+                  className="sco-btn-icon"
+                >
+                  <X size={18} />
+                </button>
               </div>
+
+              {Object.keys(incidentErrors).length > 0 && (
+                <div
+                  style={{
+                    background: "#fef2f2",
+                    border: "1px solid #fca5a5",
+                    borderRadius: "8px",
+                    padding: "12px 16px",
+                    marginBottom: "16px",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                    color: "#991b1b",
+                    fontSize: "13.5px"
+                  }}
+                >
+                  <AlertTriangle size={18} style={{ color: "#dc2626", marginTop: "2px", flexShrink: 0 }} />
+                  <div>
+                    <span style={{ fontWeight: "700" }}>Please review and fix the following errors:</span>
+                    <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>
+                      {Object.entries(incidentErrors).map(([field, msg]) => (
+                        <li key={field}>{msg}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
 
               <form onSubmit={handleSaveIncident}>
                 <div className="sco-form-grid">
@@ -1122,30 +1788,50 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                     <label>Incident Ticket # <span className="required">*</span></label>
                     <input
                       type="text"
-                      required
+                      readOnly
                       value={incidentForm.ticketNumber}
-                      onChange={(e) => setIncidentForm({ ...incidentForm, ticketNumber: e.target.value })}
+                      style={{
+                        backgroundColor: "#f8fafc",
+                        cursor: "not-allowed",
+                        color: "#334155",
+                        fontWeight: "600"
+                      }}
+                      title="Auto-generated sequential Incident Ticket #"
                     />
                   </div>
 
                   <div className="sco-form-group">
                     <label>Affected Machinery Asset <span className="required">*</span></label>
                     <select
-                      required
                       value={incidentForm.assetName}
-                      onChange={(e) => setIncidentForm({ ...incidentForm, assetName: e.target.value })}
+                      onChange={(e) => {
+                        setIncidentForm({ ...incidentForm, assetName: e.target.value });
+                        if (incidentErrors.assetName) {
+                          setIncidentErrors({ ...incidentErrors, assetName: null });
+                        }
+                      }}
+                      style={incidentErrors.assetName ? { border: "1.5px solid #ef4444" } : {}}
                     >
-                      {assets.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
-                      {!assets.length && <option value="Primary CSTR Biogas Digester Agitator #2">Primary CSTR Biogas Digester Agitator #2</option>}
+                      <option value="">-- Choose Affected Machinery Asset --</option>
+                      {assets.map((a) => (
+                        <option key={a.id} value={a.name}>
+                          {a.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
                   <div className="sco-form-group">
-                    <label>Incident Timestamp</label>
-                    <input
-                      type="datetime-local"
+                    <label>Incident Timestamp <span className="required">*</span></label>
+                    <CustomDateTimeInput
                       value={incidentForm.reportedTime}
-                      onChange={(e) => setIncidentForm({ ...incidentForm, reportedTime: e.target.value })}
+                      onChange={(val) => {
+                        setIncidentForm({ ...incidentForm, reportedTime: val });
+                        if (incidentErrors.reportedTime) {
+                          setIncidentErrors({ ...incidentErrors, reportedTime: null });
+                        }
+                      }}
+                      hasError={!!incidentErrors.reportedTime}
                     />
                   </div>
 
@@ -1153,8 +1839,15 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                     <label>Severity Level <span className="required">*</span></label>
                     <select
                       value={incidentForm.severity}
-                      onChange={(e) => setIncidentForm({ ...incidentForm, severity: e.target.value })}
+                      onChange={(e) => {
+                        setIncidentForm({ ...incidentForm, severity: e.target.value });
+                        if (incidentErrors.severity) {
+                          setIncidentErrors({ ...incidentErrors, severity: null });
+                        }
+                      }}
+                      style={incidentErrors.severity ? { border: "1.5px solid #ef4444" } : {}}
                     >
+                      <option value="">-- Choose Severity Level --</option>
                       <option value="Critical (Plant Trip Risk)">Critical (Plant Trip Risk)</option>
                       <option value="Major (Process Bottleneck)">Major (Process Bottleneck)</option>
                       <option value="Minor (Auxiliary Fault)">Minor (Auxiliary Fault)</option>
@@ -1162,44 +1855,70 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                   </div>
 
                   <div className="sco-form-group">
-                    <label>Downtime Logged (Hours)</label>
+                    <label>Downtime Logged (Hours) <span className="required">*</span></label>
                     <input
                       type="number"
                       step="0.5"
-                      min="0"
+                      min="0.1"
+                      placeholder="e.g. 2.5 (must be > 0)"
                       value={incidentForm.downtimeHours}
-                      onChange={(e) => setIncidentForm({ ...incidentForm, downtimeHours: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => {
+                        setIncidentForm({ ...incidentForm, downtimeHours: e.target.value });
+                        if (incidentErrors.downtimeHours) {
+                          setIncidentErrors({ ...incidentErrors, downtimeHours: null });
+                        }
+                      }}
+                      style={incidentErrors.downtimeHours ? { border: "1.5px solid #ef4444" } : {}}
                     />
                   </div>
 
                   <div className="sco-form-group col-span-full">
-                    <label>Failure Symptom & Breakdown Details</label>
+                    <label>Failure Symptom & Breakdown Details <span className="required">*</span></label>
                     <textarea
                       rows="2"
-                      required
                       value={incidentForm.symptomDescription}
-                      onChange={(e) => setIncidentForm({ ...incidentForm, symptomDescription: e.target.value })}
+                      onChange={(e) => {
+                        setIncidentForm({ ...incidentForm, symptomDescription: e.target.value });
+                        if (incidentErrors.symptomDescription) {
+                          setIncidentErrors({ ...incidentErrors, symptomDescription: null });
+                        }
+                      }}
                       placeholder="Describe what occurred, warning alarms triggered, and visual observations..."
+                      style={incidentErrors.symptomDescription ? { border: "1.5px solid #ef4444" } : {}}
                     ></textarea>
                   </div>
 
                   <div className="sco-form-group col-span-full">
-                    <label>Root Cause Analysis (RCA) & Corrective Action Taken</label>
+                    <label>Root Cause Analysis (RCA) & Corrective Action Taken <span className="required">*</span></label>
                     <textarea
                       rows="2"
                       value={incidentForm.correctiveAction}
-                      onChange={(e) => setIncidentForm({ ...incidentForm, correctiveAction: e.target.value })}
+                      onChange={(e) => {
+                        setIncidentForm({ ...incidentForm, correctiveAction: e.target.value });
+                        if (incidentErrors.correctiveAction) {
+                          setIncidentErrors({ ...incidentErrors, correctiveAction: null });
+                        }
+                      }}
                       placeholder="State identified failure mechanism and replacement parts fitted..."
+                      style={incidentErrors.correctiveAction ? { border: "1.5px solid #ef4444" } : {}}
                     ></textarea>
                   </div>
                 </div>
 
                 <div className="sco-form-actions">
-                  <button type="button" onClick={() => setFormMode(null)} className="sco-btn-secondary">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormMode(null);
+                      setEditingItem(null);
+                      setIncidentErrors({});
+                    }}
+                    className="sco-btn-secondary"
+                  >
                     Cancel
                   </button>
                   <button type="submit" className="sco-btn-primary" style={{ background: "#dc2626" }}>
-                    <Save size={16} /> Log Incident & Notify Team
+                    <Save size={16} /> {editingItem ? "Update Incident Record" : "Log Incident & Notify Team"}
                   </button>
                 </div>
               </form>
@@ -1212,8 +1931,16 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
           {formMode === "create_cost" && (
             <div className="sco-form-card">
               <div className="sco-form-title">
-                <span>Record Servicing Cost & Consumed Spares</span>
-                <button onClick={() => setFormMode(null)} className="sco-btn-icon"><X size={18} /></button>
+                <span>{editingItem ? "Edit Servicing Cost & Consumed Spares" : "Record Servicing Cost & Consumed Spares"}</span>
+                <button
+                  onClick={() => {
+                    setFormMode(null);
+                    setEditingItem(null);
+                  }}
+                  className="sco-btn-icon"
+                >
+                  <X size={18} />
+                </button>
               </div>
 
               <form onSubmit={handleSaveCost}>
@@ -1223,8 +1950,9 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                     <input
                       type="text"
                       required
+                      readOnly
                       value={costForm.logNumber}
-                      onChange={(e) => setCostForm({ ...costForm, logNumber: e.target.value })}
+                      style={{ backgroundColor: "#f8fafc", cursor: "not-allowed", fontWeight: "600", color: "#1e293b" }}
                     />
                   </div>
 
@@ -1233,7 +1961,15 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                     <select
                       required
                       value={costForm.assetName}
-                      onChange={(e) => setCostForm({ ...costForm, assetName: e.target.value })}
+                      onChange={(e) => {
+                        const newAsset = e.target.value;
+                        if (!editingItem) {
+                          const newCode = generateNextServiceLogCode(costLogs, newAsset);
+                          setCostForm({ ...costForm, assetName: newAsset, logNumber: newCode });
+                        } else {
+                          setCostForm({ ...costForm, assetName: newAsset });
+                        }
+                      }}
                     >
                       {assets.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
                       {!assets.length && <option value="Heavy-Duty Harvesting Biomass Tractor">Heavy-Duty Harvesting Biomass Tractor</option>}
@@ -1253,11 +1989,11 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                   </div>
 
                   <div className="sco-form-group">
-                    <label>Service Date</label>
-                    <input
-                      type="date"
+                    <label>Service Date <span className="required">*</span></label>
+                    <CustomDateInput
                       value={costForm.serviceDate}
-                      onChange={(e) => setCostForm({ ...costForm, serviceDate: e.target.value })}
+                      onChange={(val) => setCostForm({ ...costForm, serviceDate: val })}
+                      required
                     />
                   </div>
 
@@ -1300,6 +2036,16 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                     />
                   </div>
 
+                  <div className="sco-form-group">
+                    <label>Calculated Total Cost (₹)</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={`₹${((Number(costForm.sparesCost) || 0) + (Number(costForm.laborCost) || 0) + (Number(costForm.externalVendorFee) || 0)).toLocaleString("en-IN")}`}
+                      style={{ backgroundColor: "#f1f5f9", fontWeight: "700", color: "#047857", cursor: "not-allowed" }}
+                    />
+                  </div>
+
                   <div className="sco-form-group col-span-full">
                     <label>Spare Parts Description</label>
                     <input
@@ -1312,11 +2058,18 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                 </div>
 
                 <div className="sco-form-actions">
-                  <button type="button" onClick={() => setFormMode(null)} className="sco-btn-secondary">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormMode(null);
+                      setEditingItem(null);
+                    }}
+                    className="sco-btn-secondary"
+                  >
                     Cancel
                   </button>
                   <button type="submit" className="sco-btn-primary">
-                    <Save size={16} /> Save Cost Ledger Entry
+                    <Save size={16} /> {editingItem ? "Update Cost Ledger Entry" : "Save Cost Ledger Entry"}
                   </button>
                 </div>
               </form>
@@ -1559,7 +2312,7 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                           <th>Ticket #</th>
                           <th>Asset Name</th>
                           <th>Severity</th>
-                          <th>Reported Date</th>
+                          <th>Reported Date & Time</th>
                           <th>Downtime (Hrs)</th>
                           <th>Symptom Summary</th>
                           <th>Status</th>
@@ -1576,28 +2329,44 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                                 {(i.severity || "—").split(" ")[0]}
                               </span>
                             </td>
-                            <td>{i.reportedTime?.replace("T", " ")}</td>
+                            <td>{formatToDDMMYYYYTime(i.reportedTime)}</td>
                             <td style={{ fontWeight: "700", color: "#dc2626" }}>{i.downtimeHours}h</td>
                             <td>{i.symptomDescription?.slice(0, 45)}...</td>
                             <td><span className="sco-badge badge-amber">{i.status}</span></td>
                             <td style={{ textAlign: "right" }}>
-                              <button
-                                onClick={() =>
-                                  setDeleteConfirm({
-                                    isOpen: true,
-                                    title: "Delete Incident Log",
-                                    message: `Are you sure you want to delete incident ticket "${i.ticketNumber}"? This action cannot be undone.`,
-                                    onConfirm: async () => {
-                                      await deleteBreakdownIncident(i.id);
-                                      await loadAllData();
-                                    }
-                                  })
-                                }
-                                className="sco-btn-icon danger"
-                                title="Delete Incident Log"
-                              >
-                                <Trash2 size={15} />
-                              </button>
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                <button
+                                  onClick={() => setViewingItem({ type: "incident", data: i })}
+                                  className="sco-btn-icon"
+                                  title="View Incident Details"
+                                >
+                                  <Eye size={15} />
+                                </button>
+                                <button
+                                  onClick={() => handleOpenEditIncident(i)}
+                                  className="sco-btn-icon"
+                                  title="Edit Incident Log"
+                                >
+                                  <Edit2 size={15} />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    setDeleteConfirm({
+                                      isOpen: true,
+                                      title: "Delete Incident Log",
+                                      message: `Are you sure you want to delete incident ticket "${i.ticketNumber}"? This action cannot be undone.`,
+                                      onConfirm: async () => {
+                                        await deleteBreakdownIncident(i.id);
+                                        await loadAllData();
+                                      }
+                                    })
+                                  }
+                                  className="sco-btn-icon danger"
+                                  title="Delete Incident Log"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1641,9 +2410,9 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                     <table className="sco-table">
                       <thead>
                         <tr>
-                          <th>Log #</th>
-                          <th>Asset Serviced</th>
-                          <th>Service Nature</th>
+                          <th>SERVICE LOG</th>
+                          <th>SERVICE MACHINERY ASSET</th>
+                          <th>NATURE OF SERVICE</th>
                           <th>Service Date</th>
                           <th>Spares (₹)</th>
                           <th>Labor (₹)</th>
@@ -1653,39 +2422,62 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                         </tr>
                       </thead>
                       <tbody>
-                        {costLogs.map((c) => (
-                          <tr key={c.id}>
-                            <td style={{ fontWeight: "700" }}>{c.logNumber}</td>
-                            <td>{c.assetName}</td>
-                            <td>{c.serviceNature}</td>
-                            <td>{c.serviceDate}</td>
-                            <td>₹{Number(c.sparesCost || 0).toLocaleString("en-IN")}</td>
-                            <td>₹{Number(c.laborCost || 0).toLocaleString("en-IN")}</td>
-                            <td style={{ fontWeight: "700", color: "#0f172a" }}>
-                              ₹{Number(c.totalCost || 0).toLocaleString("en-IN")}
-                            </td>
-                            <td>{c.servicingVendor || "In-House Team"}</td>
-                            <td style={{ textAlign: "right" }}>
-                              <button
-                                onClick={() =>
-                                  setDeleteConfirm({
-                                    isOpen: true,
-                                    title: "Delete Servicing Cost Log",
-                                    message: `Are you sure you want to delete cost ledger log "${c.logNumber}"? This action cannot be undone.`,
-                                    onConfirm: async () => {
-                                      await deleteServicingCostLog(c.id);
-                                      await loadAllData();
+                        {costLogs.map((c) => {
+                          const rowTotal = Number(
+                            c.totalCost !== undefined && c.totalCost !== null && Number(c.totalCost) > 0
+                              ? c.totalCost
+                              : (Number(c.sparesCost) || 0) + (Number(c.laborCost) || 0) + (Number(c.externalVendorFee) || 0)
+                          );
+                          return (
+                            <tr key={c.id}>
+                              <td style={{ fontWeight: "700" }}>{c.logNumber}</td>
+                              <td>{c.assetName}</td>
+                              <td>{c.serviceNature}</td>
+                              <td>{formatToDDMMYYYY(c.serviceDate)}</td>
+                              <td>₹{Number(c.sparesCost || 0).toLocaleString("en-IN")}</td>
+                              <td>₹{Number(c.laborCost || 0).toLocaleString("en-IN")}</td>
+                              <td style={{ fontWeight: "700", color: "#0f172a" }}>
+                                ₹{rowTotal.toLocaleString("en-IN")}
+                              </td>
+                              <td>{c.servicingVendor || "In-House Team"}</td>
+                              <td style={{ textAlign: "right" }}>
+                                <div className="d-flex justify-content-end gap-1">
+                                  <button
+                                    onClick={() => setViewingItem({ type: "cost", data: { ...c, totalCost: rowTotal } })}
+                                    className="sco-btn-icon"
+                                    title="View Servicing Cost Details"
+                                  >
+                                    <Eye size={15} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenEditCost(c)}
+                                    className="sco-btn-icon"
+                                    title="Edit Servicing Cost Log"
+                                  >
+                                    <Edit2 size={15} />
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      setDeleteConfirm({
+                                        isOpen: true,
+                                        title: "Delete Servicing Cost Log",
+                                        message: `Are you sure you want to delete cost ledger log "${c.logNumber}"? This action cannot be undone.`,
+                                        onConfirm: async () => {
+                                          await deleteServicingCostLog(c.id);
+                                          await loadAllData();
+                                        }
+                                      })
                                     }
-                                  })
-                                }
-                                className="sco-btn-icon danger"
-                                title="Delete Cost Log"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                                    className="sco-btn-icon danger"
+                                    title="Delete Cost Log"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1960,6 +2752,290 @@ const AssetMaintenance = ({ onLogout, userRole }) => {
                     <Printer size={16} /> Print Schedule
                   </button>
                   <button onClick={() => setViewingItem(null)} className="sco-btn-primary">
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────── */}
+          {/* VIEW BREAKDOWN INCIDENT DETAILS MODAL                          */}
+          {/* ────────────────────────────────────────────────────────────── */}
+          {viewingItem && viewingItem.type === "incident" && (
+            <div
+              className="sco-modal-overlay"
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "rgba(15, 23, 42, 0.6)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 1050,
+                padding: "20px"
+              }}
+            >
+              <div
+                className="sco-modal-card"
+                style={{
+                  background: "#ffffff",
+                  borderRadius: "14px",
+                  width: "100%",
+                  maxWidth: "680px",
+                  maxHeight: "90vh",
+                  overflowY: "auto",
+                  padding: "28px",
+                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.25)"
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderBottom: "2px solid #e2e8f0",
+                    paddingBottom: "16px",
+                    marginBottom: "20px"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div
+                      style={{
+                        width: "44px",
+                        height: "44px",
+                        borderRadius: "10px",
+                        background: "#fee2e2",
+                        color: "#dc2626",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}
+                    >
+                      <AlertTriangle size={22} />
+                    </div>
+                    <div>
+                      <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#0f172a", margin: 0 }}>
+                        {viewingItem.data.ticketNumber}
+                      </h2>
+                      <p style={{ fontSize: "13px", color: "#64748b", margin: "2px 0 0 0" }}>
+                        Breakdown Incident & Downtime Tracking Record
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => setViewingItem(null)} className="sco-btn-icon">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "14px",
+                    marginBottom: "20px"
+                  }}
+                >
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Affected Machinery Asset</p>
+                    <p style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a", margin: 0 }}>{viewingItem.data.assetName || "—"}</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Severity Level</p>
+                    <p style={{ margin: 0 }}>
+                      <span className={`sco-badge ${(viewingItem.data.severity || "").startsWith("Critical") ? "badge-red" : "badge-amber"}`}>
+                        {viewingItem.data.severity || "—"}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Incident Timestamp</p>
+                    <p style={{ fontSize: "13.5px", fontWeight: "700", color: "#dc2626", margin: 0 }}>{formatToDDMMYYYYTime(viewingItem.data.reportedTime)}</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Downtime Logged</p>
+                    <p style={{ fontSize: "13.5px", fontWeight: "700", color: "#d97706", margin: 0 }}>{viewingItem.data.downtimeHours} Hours</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Plant Facility</p>
+                    <p style={{ fontSize: "13.5px", fontWeight: "600", color: "#0f172a", margin: 0 }}>{viewingItem.data.facility || plants[0]?.pltNm || "20 TPD CBG Plant"}</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Operating Status</p>
+                    <p style={{ margin: 0 }}>
+                      <span className="sco-badge badge-amber">{viewingItem.data.status || "In Progress / Under Repair"}</span>
+                    </p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0", gridColumn: "span 2" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Failure Symptom & Breakdown Details</p>
+                    <p style={{ fontSize: "13.5px", color: "#334155", margin: 0, lineHeight: "1.6" }}>
+                      {viewingItem.data.symptomDescription || "—"}
+                    </p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0", gridColumn: "span 2" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Root Cause Analysis (RCA) & Corrective Action Taken</p>
+                    <p style={{ fontSize: "13.5px", color: "#334155", margin: 0, lineHeight: "1.6" }}>
+                      {viewingItem.data.correctiveAction || "—"}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                  <button onClick={() => window.print()} className="sco-btn-secondary">
+                    <Printer size={16} /> Print Incident Log
+                  </button>
+                  <button
+                    onClick={() => setViewingItem(null)}
+                    className="sco-btn-primary"
+                    style={{ background: "#dc2626", borderColor: "#dc2626" }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────── */}
+          {/* VIEW SERVICING COST DETAILS MODAL                              */}
+          {/* ────────────────────────────────────────────────────────────── */}
+          {viewingItem && viewingItem.type === "cost" && (
+            <div
+              className="sco-modal-overlay"
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "rgba(15, 23, 42, 0.65)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 9999,
+                padding: "20px"
+              }}
+            >
+              <div
+                className="sco-modal-content"
+                style={{
+                  background: "#fff",
+                  borderRadius: "16px",
+                  maxWidth: "680px",
+                  width: "100%",
+                  padding: "28px",
+                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
+                  maxHeight: "90vh",
+                  overflowY: "auto"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "1px solid #f1f5f9", paddingBottom: "14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div
+                      style={{
+                        width: "44px",
+                        height: "44px",
+                        borderRadius: "10px",
+                        background: "#ecfdf5",
+                        color: "#059669",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}
+                    >
+                      <DollarSign size={22} />
+                    </div>
+                    <div>
+                      <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#0f172a", margin: 0 }}>
+                        {viewingItem.data.logNumber}
+                      </h2>
+                      <p style={{ fontSize: "13px", color: "#64748b", margin: "2px 0 0 0" }}>
+                        Machinery Servicing Cost & Consumed Spares Ledger Details
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => setViewingItem(null)} className="sco-btn-icon">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "14px",
+                    marginBottom: "20px"
+                  }}
+                >
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Service Machinery Asset</p>
+                    <p style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a", margin: 0 }}>{viewingItem.data.assetName || "—"}</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Nature of Service</p>
+                    <p style={{ fontSize: "13.5px", fontWeight: "600", color: "#2563eb", margin: 0 }}>{viewingItem.data.serviceNature || "—"}</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Service Date</p>
+                    <p style={{ fontSize: "13.5px", fontWeight: "600", color: "#0f172a", margin: 0 }}>{formatToDDMMYYYY(viewingItem.data.serviceDate)}</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>External Service Provider / Agency</p>
+                    <p style={{ fontSize: "13.5px", fontWeight: "600", color: "#0f172a", margin: 0 }}>{viewingItem.data.servicingVendor || "In-House Maintenance Team"}</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Spares Consumed Cost</p>
+                    <p style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", margin: 0 }}>₹{Number(viewingItem.data.sparesCost || 0).toLocaleString("en-IN")}</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Internal Labor Charges</p>
+                    <p style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", margin: 0 }}>₹{Number(viewingItem.data.laborCost || 0).toLocaleString("en-IN")}</p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>External Vendor Charges</p>
+                    <p style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", margin: 0 }}>₹{Number(viewingItem.data.externalVendorFee || 0).toLocaleString("en-IN")}</p>
+                  </div>
+
+                  <div style={{ background: "#ecfdf5", padding: "12px 14px", borderRadius: "8px", border: "1.5px solid #a7f3d0" }}>
+                    <p style={{ fontSize: "12px", color: "#065f46", margin: "0 0 4px 0", fontWeight: "700", textTransform: "uppercase" }}>Total Servicing Cost</p>
+                    <p style={{ fontSize: "18px", fontWeight: "800", color: "#047857", margin: 0 }}>
+                      ₹{(Number(viewingItem.data.totalCost) || (Number(viewingItem.data.sparesCost || 0) + Number(viewingItem.data.laborCost || 0) + Number(viewingItem.data.externalVendorFee || 0))).toLocaleString("en-IN")}
+                    </p>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0", gridColumn: "span 2" }}>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 4px 0", fontWeight: "600", textTransform: "uppercase" }}>Spare Parts Description</p>
+                    <p style={{ fontSize: "13.5px", color: "#334155", margin: 0, lineHeight: "1.6" }}>
+                      {viewingItem.data.sparesConsumed || "—"}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                  <button onClick={() => window.print()} className="sco-btn-secondary">
+                    <Printer size={16} /> Print Service Log
+                  </button>
+                  <button
+                    onClick={() => setViewingItem(null)}
+                    className="sco-btn-primary"
+                    style={{ background: "#059669", borderColor: "#059669" }}
+                  >
                     Close
                   </button>
                 </div>

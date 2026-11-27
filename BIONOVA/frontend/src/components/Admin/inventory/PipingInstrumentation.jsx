@@ -249,20 +249,20 @@ const PipingInstrumentation = ({ screenPerm }) => {
       instrumentType: "PRS",
       range: "010BAR",
       connection: "THD",
-      name: "90° Long Radius Seamless Carbon Steel Pipe Elbow (2-Inch ANSI 150#)",
+      name: "",
       category: "Pipes & Tubing",
-      material: "Carbon Steel ASTM A106 Gr. B",
-      sizeRating: "DN50 (2-Inch) ANSI 150# RF",
-      endConnection: "Butt Weld / Flanged ANSI 150# RF",
-      operatingTemp: "-20°C to +150°C",
-      currentStock: 12,
-      reorderThreshold: 4,
+      material: "",
+      sizeRating: "",
+      endConnection: "",
+      operatingTemp: "",
+      currentStock: "",
+      reorderThreshold: "",
       uom: "Units",
-      location: "Pipe Yard - Rack 4",
-      unitCost: 3500,
-      supplier: "Maharashtra Seamless Ltd",
-      pidLineRef: "P&ID-BG-L01-050",
-      notes: "Primary raw biogas conveyance elbow"
+      location: "",
+      unitCost: "",
+      supplier: "",
+      pidLineRef: "",
+      notes: ""
     });
     setIsModalOpen(true);
   };
@@ -826,6 +826,7 @@ const PipingInstrumentation = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 12"
                     value={formData.currentStock}
                     onChange={(e) => setFormData({ ...formData, currentStock: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -840,6 +841,7 @@ const PipingInstrumentation = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 4"
                     value={formData.reorderThreshold}
                     onChange={(e) => setFormData({ ...formData, reorderThreshold: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -854,6 +856,7 @@ const PipingInstrumentation = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 3500"
                     value={formData.unitCost}
                     onChange={(e) => setFormData({ ...formData, unitCost: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}

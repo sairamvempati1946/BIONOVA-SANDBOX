@@ -618,6 +618,143 @@ export async function deleteEquipmentWarranty(id) {
 // ─────────────────────────────────────────────────────────────────────────────
 const STORAGE_KEY_ALERTS = "bionova_inventory_alerts_v1";
 
+/**
+ * Calculates dynamic real-time expiry details across 6 tiers:
+ * 1. Expired / Daily Overdue (daysLeft <= 0)
+ * 2. Below 7 Days (0 < daysLeft <= 7)
+ * 3. Below 15 Days (7 < daysLeft <= 15)
+ * 4. Below 30 Days (15 < daysLeft <= 30)
+ * 5. Below 60 Days (30 < daysLeft <= 60)
+ * 6. Below 90 Days (60 < daysLeft <= 90)
+ */
+export function getExpiryTierDetails(expiryDateStr) {
+  if (!expiryDateStr || expiryDateStr === "N/A" || typeof expiryDateStr !== "string" || !expiryDateStr.trim()) {
+    return { tierKey: "none", tierName: "No Expiry", label: "No Expiry", daysLeft: null, overdueDays: 0, isAlert: false };
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const exp = new Date(expiryDateStr);
+  if (isNaN(exp.getTime())) {
+    return { tierKey: "none", tierName: "Invalid Date", label: "Invalid Date", daysLeft: null, overdueDays: 0, isAlert: false };
+  }
+  exp.setHours(0, 0, 0, 0);
+
+  const diffMs = exp.getTime() - today.getTime();
+  const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  if (daysLeft < 0) {
+    const overdueDays = Math.abs(daysLeft);
+    return {
+      tierKey: "expired",
+      tierName: "Expired (Daily Overdue)",
+      severity: "Critical",
+      daysLeft,
+      overdueDays,
+      badgeText: `Expired (${overdueDays}d ago)`,
+      color: "#dc2626",
+      bg: "#fee2e2",
+      border: "#fca5a5",
+      isAlert: true
+    };
+  }
+  if (daysLeft === 0) {
+    return {
+      tierKey: "expired_today",
+      tierName: "Expires Today",
+      severity: "Critical",
+      daysLeft: 0,
+      overdueDays: 0,
+      badgeText: "Expires Today",
+      color: "#dc2626",
+      bg: "#fee2e2",
+      border: "#fca5a5",
+      isAlert: true
+    };
+  }
+  if (daysLeft <= 7) {
+    return {
+      tierKey: "below_7",
+      tierName: "Below 7 Days",
+      severity: "Critical",
+      daysLeft,
+      overdueDays: 0,
+      badgeText: `< 7d (${daysLeft}d left)`,
+      color: "#dc2626",
+      bg: "#fee2e2",
+      border: "#fca5a5",
+      isAlert: true
+    };
+  }
+  if (daysLeft <= 15) {
+    return {
+      tierKey: "below_15",
+      tierName: "Below 15 Days",
+      severity: "High",
+      daysLeft,
+      overdueDays: 0,
+      badgeText: `< 15d (${daysLeft}d left)`,
+      color: "#ea580c",
+      bg: "#ffedd5",
+      border: "#fdba74",
+      isAlert: true
+    };
+  }
+  if (daysLeft <= 30) {
+    return {
+      tierKey: "below_30",
+      tierName: "Below 30 Days",
+      severity: "Warning",
+      daysLeft,
+      overdueDays: 0,
+      badgeText: `< 30d (${daysLeft}d left)`,
+      color: "#d97706",
+      bg: "#fef3c7",
+      border: "#fde68a",
+      isAlert: true
+    };
+  }
+  if (daysLeft <= 60) {
+    return {
+      tierKey: "below_60",
+      tierName: "Below 60 Days",
+      severity: "Moderate",
+      daysLeft,
+      overdueDays: 0,
+      badgeText: `< 60d (${daysLeft}d left)`,
+      color: "#ca8a04",
+      bg: "#fef9c3",
+      border: "#fef08a",
+      isAlert: true
+    };
+  }
+  if (daysLeft <= 90) {
+    return {
+      tierKey: "below_90",
+      tierName: "Below 90 Days",
+      severity: "Notice",
+      daysLeft,
+      overdueDays: 0,
+      badgeText: `< 90d (${daysLeft}d left)`,
+      color: "#0284c7",
+      bg: "#e0f2fe",
+      border: "#bae6fd",
+      isAlert: true
+    };
+  }
+  return {
+    tierKey: "healthy",
+    tierName: "Valid Stock",
+    severity: "Normal",
+    daysLeft,
+    overdueDays: 0,
+    badgeText: `Valid (${daysLeft}d left)`,
+    color: "#059669",
+    bg: "#ecfdf5",
+    border: "#a7f3d0",
+    isAlert: false
+  };
+}
+
 function mapAlertFromDb(r) {
   return {
     id: r.id,

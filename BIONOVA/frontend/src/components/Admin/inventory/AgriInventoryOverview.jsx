@@ -25,7 +25,9 @@ import {
   Copy,
   Check,
   Lock,
-  Sparkles
+  Sparkles,
+  Clock,
+  BellRing
 } from "lucide-react";
 import SkuPreviewCard from "./SkuPreviewCard";
 import {
@@ -35,7 +37,13 @@ import {
   generateLiveSkuPreview,
   allocateBackendSku
 } from "./skuService";
-import { getInventoryItems, saveInventoryItem, deleteInventoryItem } from "./inventoryApi";
+import {
+  getInventoryItems,
+  saveInventoryItem,
+  deleteInventoryItem,
+  getExpiryTierDetails,
+  saveStockAlert
+} from "./inventoryApi";
 
 const STORAGE_KEY = "bionova_inventory_items_v1";
 
@@ -51,7 +59,7 @@ const INITIAL_ITEMS = [
     uom: "Kg",
     plantLocation: "Plant 1 - Hyderabad East CBG",
     unitCost: 12,
-    expiryDate: "2027-06-30",
+    expiryDate: "2026-11-20", // Expired (Daily Overdue)
     supplier: "Telangana State Seeds Dev Corp",
     notes: "High biomass yield energy crop for primary anaerobic digester feedstock."
   },
@@ -66,29 +74,29 @@ const INITIAL_ITEMS = [
     uom: "Ltr",
     plantLocation: "Plant 1 - Hyderabad East CBG",
     unitCost: 450,
-    expiryDate: "2027-03-15",
+    expiryDate: "2026-12-02", // < 7 Days
     supplier: "Biochem Agrotech Solutions Ltd",
     notes: "Specialized thermophilic culture to accelerate biogas production."
   },
   {
     id: 3,
-    sku: "AGR-EQ-003",
-    name: "Heavy-Duty Biomass Forage Harvester Blades",
-    category: "Equipment",
-    batchNo: "LOT-2026-BLD14",
-    currentStock: 18,
-    reorderThreshold: 6,
-    uom: "Sets",
+    sku: "AGR-CH-003",
+    name: "Cellulolytic Enzyme Hydrolysis Booster",
+    category: "Agrochemicals",
+    batchNo: "LOT-2026-ENZ14",
+    currentStock: 640,
+    reorderThreshold: 150,
+    uom: "Ltr",
     plantLocation: "Plant 2 - Medak Agri Hub",
-    unitCost: 14500,
-    expiryDate: "N/A",
-    supplier: "Claas Agriculture India Pvt Ltd",
-    notes: "High manganese steel replacement blades for Claas Jaguar harvester fleet."
+    unitCost: 620,
+    expiryDate: "2026-12-10", // < 15 Days
+    supplier: "Biozyme Biotech India Pvt Ltd",
+    notes: "Enzymatic additive to speed up lignocellulose fiber breakdown."
   },
   {
     id: 4,
     sku: "AGR-SD-004",
-    name: "Sorghum Bicolor (Sweet Sorghum) High-Brix Seeds",
+    name: "Sorghum Bicolor High-Brix Hybrid Seeds",
     category: "Seeds",
     batchNo: "LOT-2026-SRG04",
     currentStock: 4200,
@@ -96,9 +104,39 @@ const INITIAL_ITEMS = [
     uom: "Kg",
     plantLocation: "Plant 3 - Nalgonda Biomass Facility",
     unitCost: 85,
-    expiryDate: "2027-08-20",
+    expiryDate: "2026-12-25", // < 30 Days
     supplier: "Advanta Golden Seeds India Ltd",
     notes: "High sugar content sorghum feedstock buffer for monsoon season."
+  },
+  {
+    id: 5,
+    sku: "AGR-CH-005",
+    name: "Ferric Chloride Coagulant & H2S Scavenger",
+    category: "Agrochemicals",
+    batchNo: "LOT-2026-FECL01",
+    currentStock: 1200,
+    reorderThreshold: 300,
+    uom: "Ltr",
+    plantLocation: "Plant 1 - Hyderabad East CBG",
+    unitCost: 180,
+    expiryDate: "2027-01-15", // < 60 Days
+    supplier: "Aditya Birla Chemicals Ltd",
+    notes: "H2S chemical precipitation agent inside anaerobic digesters."
+  },
+  {
+    id: 6,
+    sku: "AGR-SD-006",
+    name: "Sweet Pearl Hybrid Maize Silage Grain",
+    category: "Seeds",
+    batchNo: "LOT-2026-MZE06",
+    currentStock: 8500,
+    reorderThreshold: 2000,
+    uom: "Kg",
+    plantLocation: "Plant 2 - Medak Agri Hub",
+    unitCost: 45,
+    expiryDate: "2027-02-15", // < 90 Days
+    supplier: "Kaveri Seed Company Ltd",
+    notes: "Energy-dense feedstock component for winter digester operations."
   }
 ];
 
@@ -122,6 +160,7 @@ const AgriInventoryOverview = ({ screenPerm }) => {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [plantFilter, setPlantFilter] = useState("All");
+  const [expiryFilter, setExpiryFilter] = useState("All");
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -207,7 +246,24 @@ const AgriInventoryOverview = ({ screenPerm }) => {
   const lowStockCount = items.filter(i => Number(i.currentStock) > 0 && Number(i.currentStock) <= Number(i.reorderThreshold)).length;
   const outOfStockCount = items.filter(i => Number(i.currentStock) <= 0).length;
 
-  // Filtered List
+  // Real-Time Multi-Tier Expiry Statistics
+  const expiryStats = items.reduce(
+    (acc, item) => {
+      const exp = getExpiryTierDetails(item.expiryDate);
+      if (!exp || !exp.isAlert) return acc;
+      acc.total++;
+      if (exp.tierKey === "expired" || exp.tierKey === "expired_today") acc.expired++;
+      else if (exp.tierKey === "below_7") acc.below7++;
+      else if (exp.tierKey === "below_15") acc.below15++;
+      else if (exp.tierKey === "below_30") acc.below30++;
+      else if (exp.tierKey === "below_60") acc.below60++;
+      else if (exp.tierKey === "below_90") acc.below90++;
+      return acc;
+    },
+    { total: 0, expired: 0, below7: 0, below15: 0, below30: 0, below60: 0, below90: 0 }
+  );
+
+  // Filtered List with Real-Time Expiry Tier Matching
   const filteredItems = items.filter(item => {
     const s = (searchTerm || "").toLowerCase();
     const matchesSearch =
@@ -225,7 +281,25 @@ const AgriInventoryOverview = ({ screenPerm }) => {
       matchesStatus = status === statusFilter;
     }
 
-    return matchesSearch && matchesCategory && matchesPlant && matchesStatus;
+    let matchesExpiry = true;
+    const exp = getExpiryTierDetails(item.expiryDate);
+    if (expiryFilter === "expired") {
+      matchesExpiry = exp.tierKey === "expired" || exp.tierKey === "expired_today";
+    } else if (expiryFilter === "below_7") {
+      matchesExpiry = exp.tierKey === "below_7";
+    } else if (expiryFilter === "below_15") {
+      matchesExpiry = exp.tierKey === "below_15";
+    } else if (expiryFilter === "below_30") {
+      matchesExpiry = exp.tierKey === "below_30";
+    } else if (expiryFilter === "below_60") {
+      matchesExpiry = exp.tierKey === "below_60";
+    } else if (expiryFilter === "below_90") {
+      matchesExpiry = exp.tierKey === "below_90";
+    } else if (expiryFilter === "any_expiring") {
+      matchesExpiry = exp.isAlert === true;
+    }
+
+    return matchesSearch && matchesCategory && matchesPlant && matchesStatus && matchesExpiry;
   });
 
   // Open Add Modal
@@ -244,17 +318,17 @@ const AgriInventoryOverview = ({ screenPerm }) => {
       itemType: "MZE",
       grade: "A1",
       packSize: "050",
-      name: "Maize Grain & High-Energy Silage",
+      name: "",
       category: "Feedstock",
-      batchNo: `BN-LOT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
-      currentStock: 100,
-      reorderThreshold: 20,
+      batchNo: "",
+      currentStock: "",
+      reorderThreshold: "",
       uom: "Kg",
       plantLocation: "Plant 1 - Hyderabad East CBG",
-      unitCost: 22,
+      unitCost: "",
       expiryDate: "",
-      supplier: "Telangana State Agro Federation",
-      notes: "Primary anaerobic digester feedstock buffer."
+      supplier: "",
+      notes: ""
     });
     setIsModalOpen(true);
   };
@@ -294,8 +368,24 @@ const AgriInventoryOverview = ({ screenPerm }) => {
   // Save Item (Add or Edit)
   const handleSaveItem = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
+    if (!formData.name?.trim()) {
       alert("Please enter an item name.");
+      return;
+    }
+    if (!formData.batchNo?.trim()) {
+      alert("Please enter a batch / lot number.");
+      return;
+    }
+    if (formData.currentStock === "" || formData.currentStock === null || formData.currentStock === undefined) {
+      alert("Please enter current stock quantity.");
+      return;
+    }
+    if (formData.reorderThreshold === "" || formData.reorderThreshold === null || formData.reorderThreshold === undefined) {
+      alert("Please enter reorder minimum threshold.");
+      return;
+    }
+    if (!formData.expiryDate) {
+      alert("Please select an expiry date.");
       return;
     }
 
@@ -317,6 +407,29 @@ const AgriInventoryOverview = ({ screenPerm }) => {
       };
       setItems(prev => [newItem, ...prev.filter(i => i.id !== tempId)]);
       setIsModalOpen(false);
+
+      // Automatic real-time Stock Alert sync for expiring or expired batches
+      const exp = getExpiryTierDetails(newItem.expiryDate);
+      if (exp && exp.isAlert) {
+        saveStockAlert({
+          type: "Batch Expiry Alert",
+          severity: exp.severity,
+          title: exp.tierKey === "expired" || exp.tierKey === "expired_today"
+            ? `EXPIRED BATCH: ${newItem.name} (${newItem.batchNo || newItem.sku}) ${exp.overdueDays > 0 ? `${exp.overdueDays} Days Past Expiry` : "Today"}`
+            : `EXPIRING (${exp.tierName}): ${newItem.name} (${newItem.batchNo || newItem.sku}) - ${exp.daysLeft}d left`,
+          materialName: newItem.name,
+          batchNo: newItem.batchNo || newItem.sku,
+          plantLocation: newItem.plantLocation || "Plant 1 - Hyderabad East CBG",
+          currentVal: exp.daysLeft < 0 ? `${exp.overdueDays}d overdue` : exp.daysLeft === 0 ? "Expires Today" : `${exp.daysLeft}d remaining`,
+          thresholdVal: `Expiry: ${newItem.expiryDate}`,
+          expiryDaysRemaining: exp.daysLeft,
+          actionRequired: exp.tierKey === "expired"
+            ? "Quarantine batch immediately from active production line. File scrap/vendor return NCR."
+            : `Prioritize consumption before ${newItem.expiryDate} (FIFO priority).`,
+          status: "Active"
+        }).catch(err => console.warn("Stock alert auto-sync warning:", err));
+      }
+
       try {
         const res = await saveInventoryItem(newItem);
         if (res && res.id) {
@@ -335,6 +448,28 @@ const AgriInventoryOverview = ({ screenPerm }) => {
       };
       setItems(prev => prev.map(it => it.id === selectedItem.id ? updatedItem : it));
       setIsModalOpen(false);
+
+      // Automatic real-time Stock Alert sync on edit
+      const exp = getExpiryTierDetails(updatedItem.expiryDate);
+      if (exp && exp.isAlert) {
+        saveStockAlert({
+          type: "Batch Expiry Alert",
+          severity: exp.severity,
+          title: exp.tierKey === "expired" || exp.tierKey === "expired_today"
+            ? `EXPIRED BATCH: ${updatedItem.name} (${updatedItem.batchNo || updatedItem.sku}) ${exp.overdueDays > 0 ? `${exp.overdueDays} Days Past Expiry` : "Today"}`
+            : `EXPIRING (${exp.tierName}): ${updatedItem.name} (${updatedItem.batchNo || updatedItem.sku}) - ${exp.daysLeft}d left`,
+          materialName: updatedItem.name,
+          batchNo: updatedItem.batchNo || updatedItem.sku,
+          plantLocation: updatedItem.plantLocation || "Plant 1 - Hyderabad East CBG",
+          currentVal: exp.daysLeft < 0 ? `${exp.overdueDays}d overdue` : exp.daysLeft === 0 ? "Expires Today" : `${exp.daysLeft}d remaining`,
+          thresholdVal: `Expiry: ${updatedItem.expiryDate}`,
+          expiryDaysRemaining: exp.daysLeft,
+          actionRequired: exp.tierKey === "expired"
+            ? "Quarantine batch immediately from active production line. File scrap/vendor return NCR."
+            : `Prioritize consumption before ${updatedItem.expiryDate} (FIFO priority).`,
+          status: "Active"
+        }).catch(err => console.warn("Stock alert auto-sync warning:", err));
+      }
       try {
         await saveInventoryItem(updatedItem, selectedItem.id);
       } catch (err) {
@@ -702,6 +837,7 @@ const AgriInventoryOverview = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 100"
                     value={formData.currentStock}
                     onChange={(e) => setFormData({ ...formData, currentStock: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -716,6 +852,7 @@ const AgriInventoryOverview = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 20"
                     value={formData.reorderThreshold}
                     onChange={(e) => setFormData({ ...formData, reorderThreshold: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -746,6 +883,7 @@ const AgriInventoryOverview = ({ screenPerm }) => {
                   <input
                     type="number"
                     min="0"
+                    placeholder="e.g. 22"
                     value={formData.unitCost}
                     onChange={(e) => setFormData({ ...formData, unitCost: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -754,10 +892,11 @@ const AgriInventoryOverview = ({ screenPerm }) => {
 
                 <div>
                   <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#334155", marginBottom: "6px" }}>
-                    Expiry Date
+                    Expiry Date *
                   </label>
                   <input
                     type="date"
+                    required
                     value={formData.expiryDate}
                     onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -770,7 +909,7 @@ const AgriInventoryOverview = ({ screenPerm }) => {
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Agritech Agro Seeds Ltd"
+                    placeholder="e.g. Telangana State Agro Federation"
                     value={formData.supplier}
                     onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -783,7 +922,7 @@ const AgriInventoryOverview = ({ screenPerm }) => {
                   </label>
                   <textarea
                     rows={3}
-                    placeholder="Usage context, safety notes, storage instructions..."
+                    placeholder="e.g. Primary anaerobic digester feedstock buffer..."
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box", resize: "vertical" }}
@@ -888,6 +1027,71 @@ const AgriInventoryOverview = ({ screenPerm }) => {
         </div>
       </div>
 
+      {/* Real-Time Multi-Tier Expiry Notification Banner */}
+      {expiryStats.total > 0 && (
+        <div style={{
+          background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+          border: "1.5px solid #fde68a",
+          borderRadius: "10px",
+          padding: "12px 18px",
+          marginBottom: "16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "12px"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{
+              width: "36px",
+              height: "36px",
+              borderRadius: "50%",
+              backgroundColor: "#fef3c7",
+              color: "#d97706",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "2px solid #f59e0b",
+              flexShrink: 0
+            }}>
+              <Clock size={18} />
+            </div>
+            <div>
+              <div style={{ fontSize: "13.5px", fontWeight: "800", color: "#92400e" }}>
+                Live Batch Expiry Monitor: {expiryStats.total} Feedstock Batches Expiring / Overdue
+              </div>
+              <div style={{ fontSize: "12px", color: "#b45309", display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "2px" }}>
+                {expiryStats.expired > 0 && <span style={{ color: "#dc2626", fontWeight: "700" }}>• {expiryStats.expired} Expired (Daily Overdue)</span>}
+                {expiryStats.below7 > 0 && <span style={{ color: "#dc2626", fontWeight: "600" }}>• {expiryStats.below7} &lt; 7 Days</span>}
+                {expiryStats.below15 > 0 && <span style={{ color: "#ea580c", fontWeight: "600" }}>• {expiryStats.below15} &lt; 15 Days</span>}
+                {expiryStats.below30 > 0 && <span style={{ color: "#d97706", fontWeight: "600" }}>• {expiryStats.below30} &lt; 30 Days</span>}
+                {expiryStats.below60 > 0 && <span style={{ color: "#ca8a04", fontWeight: "600" }}>• {expiryStats.below60} &lt; 60 Days</span>}
+                {expiryStats.below90 > 0 && <span style={{ color: "#0284c7", fontWeight: "600" }}>• {expiryStats.below90} &lt; 90 Days</span>}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              type="button"
+              onClick={() => setExpiryFilter(expiryFilter === "any_expiring" ? "All" : "any_expiring")}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: "600",
+                backgroundColor: expiryFilter === "any_expiring" ? "#92400e" : "#d97706",
+                color: "#ffffff",
+                border: "none",
+                cursor: "pointer",
+                boxShadow: "0 1px 3px rgba(217, 119, 6, 0.3)"
+              }}
+            >
+              {expiryFilter === "any_expiring" ? "Clear Expiry Filter" : "Filter Expiring Batches"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Search & Filter Controls */}
       <div className="inv-controls-card">
         <div className="inv-controls-row">
@@ -912,6 +1116,22 @@ const AgriInventoryOverview = ({ screenPerm }) => {
               <option value="Seeds">🌱 Seeds & Propagation</option>
               <option value="Agrochemicals">🧪 Agrochemicals & Nutrients</option>
               <option value="Equipment">⚙️ Equipment & Spares</option>
+            </select>
+
+            <select
+              className="inv-select"
+              value={expiryFilter}
+              onChange={(e) => setExpiryFilter(e.target.value)}
+              style={{ fontWeight: expiryFilter !== "All" ? "700" : "normal" }}
+            >
+              <option value="All">All Expiry Statuses</option>
+              <option value="any_expiring">⚠️ All Expiring / Overdue Batches</option>
+              <option value="expired">🚨 Expired (Daily Overdue)</option>
+              <option value="below_7">🔴 Below 7 Days (&lt; 7d)</option>
+              <option value="below_15">🟠 Below 15 Days (&lt; 15d)</option>
+              <option value="below_30">🟡 Below 30 Days (&lt; 30d)</option>
+              <option value="below_60">⏳ Below 60 Days (&lt; 60d)</option>
+              <option value="below_90">📅 Below 90 Days (&lt; 90d)</option>
             </select>
 
             <select
@@ -994,7 +1214,51 @@ const AgriInventoryOverview = ({ screenPerm }) => {
                         <span className="inv-location-text">{item.plantLocation}</span>
                       </td>
                       <td>
-                        <span className="inv-date-text">{item.expiryDate || "N/A"}</span>
+                        {(() => {
+                          const exp = getExpiryTierDetails(item.expiryDate);
+                          return (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                              <span className="inv-date-text" style={{ fontWeight: "600", color: "#1e293b" }}>
+                                {item.expiryDate || "N/A"}
+                              </span>
+                              {exp.isAlert && (
+                                <span style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  padding: "2px 7px",
+                                  borderRadius: "8px",
+                                  fontSize: "10.5px",
+                                  fontWeight: "700",
+                                  backgroundColor: exp.bg,
+                                  color: exp.color,
+                                  border: `1px solid ${exp.border}`,
+                                  width: "fit-content"
+                                }}>
+                                  <Clock size={10} />
+                                  {exp.badgeText}
+                                </span>
+                              )}
+                              {!exp.isAlert && exp.daysLeft !== null && exp.daysLeft > 90 && (
+                                <span style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  padding: "1px 6px",
+                                  borderRadius: "8px",
+                                  fontSize: "10px",
+                                  fontWeight: "600",
+                                  backgroundColor: "#ecfdf5",
+                                  color: "#059669",
+                                  border: "1px solid #a7f3d0",
+                                  width: "fit-content"
+                                }}>
+                                  Valid ({exp.daysLeft}d left)
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td>
                         <span className={`inv-status-pill ${

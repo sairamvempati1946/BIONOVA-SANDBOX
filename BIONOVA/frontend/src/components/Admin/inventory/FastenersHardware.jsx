@@ -249,24 +249,24 @@ const FastenersHardware = ({ screenPerm }) => {
       diameter: "M12",
       length: "050",
       fastenerGrade: "G8",
-      name: "SS 304 High-Tensile Hex Head Flange Bolt (M12 x 50mm)",
+      name: "",
       category: "High-Tensile Bolts",
-      grade: "Grade 8.8 (SS 304)",
-      threadSpec: "M12 x 1.75mm",
+      grade: "",
+      threadSpec: "",
       coating: "Passivated / Natural Finish",
-      batchNo: `BAT-${new Date().getFullYear()}-FST${Math.floor(10 + Math.random() * 90)}`,
-      heatNo: `HT-${Math.floor(10000 + Math.random() * 90000)}`,
-      mtcCertNo: `MTC-EN10204-${Math.floor(1000 + Math.random() * 9000)}`,
-      mtcFileName: "Mill_Test_Certificate.pdf",
-      tensileStrength: "800 MPa",
-      yieldStrength: "640 MPa",
-      currentStock: 500,
-      reorderThreshold: 200,
+      batchNo: "",
+      heatNo: "",
+      mtcCertNo: "",
+      mtcFileName: "",
+      tensileStrength: "",
+      yieldStrength: "",
+      currentStock: "",
+      reorderThreshold: "",
       uom: "Nos",
-      location: "Store Room B - Bin 10",
-      unitCost: 85,
-      supplier: "Sundram Fasteners Ltd",
-      application: "Biogas Compressor Skid Flange Bolting"
+      location: "",
+      unitCost: "",
+      supplier: "",
+      application: ""
     });
     setIsModalOpen(true);
   };
@@ -730,6 +730,7 @@ const FastenersHardware = ({ screenPerm }) => {
                   <input
                     type="text"
                     required
+                    placeholder="e.g. BAT-2026-FST09"
                     value={formData.batchNo}
                     onChange={(e) => setFormData({ ...formData, batchNo: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -743,6 +744,7 @@ const FastenersHardware = ({ screenPerm }) => {
                   <input
                     type="text"
                     required
+                    placeholder="e.g. HT-77210"
                     value={formData.heatNo}
                     onChange={(e) => setFormData({ ...formData, heatNo: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -771,6 +773,7 @@ const FastenersHardware = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 500"
                     value={formData.currentStock}
                     onChange={(e) => setFormData({ ...formData, currentStock: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -785,6 +788,7 @@ const FastenersHardware = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 200"
                     value={formData.reorderThreshold}
                     onChange={(e) => setFormData({ ...formData, reorderThreshold: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -799,6 +803,7 @@ const FastenersHardware = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 85"
                     value={formData.unitCost}
                     onChange={(e) => setFormData({ ...formData, unitCost: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}

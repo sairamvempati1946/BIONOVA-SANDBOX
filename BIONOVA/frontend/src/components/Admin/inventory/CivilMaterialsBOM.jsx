@@ -227,18 +227,18 @@ const CivilMaterialsBOM = ({ screenPerm }) => {
       discipline: "CIV",
       item: "CON",
       specification: "001",
-      name: "Ready Mix Concrete M35 Sulfate-Resistant",
+      name: "",
       category: "Concrete Grades",
-      gradeSpec: "M35 High Durability",
+      gradeSpec: "",
       uom: "Cu.m",
-      bomRequiredQty: 100,
-      procuredQty: 80,
-      currentStock: 20,
-      allocatedQty: 60,
-      allocatedStructure: "Plant Foundation",
-      yardLocation: "Main Yard Area",
-      unitCost: 5000,
-      supplier: "UltraTech Concrete Solutions",
+      bomRequiredQty: "",
+      procuredQty: "",
+      currentStock: "",
+      allocatedQty: "",
+      allocatedStructure: "",
+      yardLocation: "",
+      unitCost: "",
+      supplier: "",
       status: "Adequate",
       notes: ""
     });
@@ -687,6 +687,7 @@ const CivilMaterialsBOM = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 100"
                     value={formData.bomRequiredQty}
                     onChange={(e) => setFormData({ ...formData, bomRequiredQty: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -701,6 +702,7 @@ const CivilMaterialsBOM = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 80"
                     value={formData.procuredQty}
                     onChange={(e) => setFormData({ ...formData, procuredQty: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -715,6 +717,7 @@ const CivilMaterialsBOM = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 20"
                     value={formData.currentStock}
                     onChange={(e) => setFormData({ ...formData, currentStock: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
@@ -729,6 +732,7 @@ const CivilMaterialsBOM = ({ screenPerm }) => {
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 5000"
                     value={formData.unitCost}
                     onChange={(e) => setFormData({ ...formData, unitCost: e.target.value })}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13.5px", backgroundColor: "#ffffff", boxSizing: "border-box" }}
